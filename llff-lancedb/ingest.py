@@ -49,7 +49,11 @@ def ingest_scene(data_dir: Path) -> list[dict]:
 
     records = []
     for i in range(n_views):
+        with open(image_paths[i], "rb") as f:
+            image_bytes = f.read()
+
         records.append({
+            "image": image_bytes,
             "image_path": image_paths[i],
             "camera_pose": plucker[i].tolist(),
             "c2w": c2w[i].flatten().astype(np.float32).tolist(),
