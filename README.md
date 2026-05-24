@@ -1,0 +1,17 @@
+# DreamDB Examples
+
+Usage examples for [DreamDB](https://dreamdb.dreamlake.ai) with real-world datasets.
+
+## Examples
+
+| Example | Description |
+|---------|-------------|
+| [`llff/`](llff/) | LLFF (Local Light Field Fusion) scene with camera pose vector index |
+
+## Getting Started
+
+Each example is self-contained. See the README inside each directory for setup instructions.
+
+## Large Files
+
+This repo uses [Git LFS](https://git-lfs.github.com/) for images and binary assets. Run `git lfs install` before cloning.
