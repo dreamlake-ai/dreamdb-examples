@@ -7,6 +7,7 @@ Usage examples for [DreamDB](https://dreamdb.dreamlake.ai) with real-world datas
 | Example | Description |
 |---------|-------------|
 | [`llff/`](llff/) | LLFF (Local Light Field Fusion) scene with camera pose vector index |
+| [`lancedb/`](lancedb/) | Same LLFF use case using LanceDB for comparison |
 
 ## Getting Started
 
