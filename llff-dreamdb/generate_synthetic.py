@@ -25,14 +25,23 @@ def look_at(eye: np.ndarray, target: np.ndarray, up: np.ndarray) -> np.ndarray:
     return c2w
 
 
-def make_placeholder_jpeg(width: int = 64, height: int = 64) -> bytes:
+def make_placeholder_jpeg(index: int, n_total: int, width: int = 64, height: int = 64) -> bytes:
     try:
-        from PIL import Image
+        from PIL import Image, ImageDraw
+        import colorsys
         import io
 
-        img = Image.new("RGB", (width, height), color=(128, 128, 128))
+        hue = index / max(n_total, 1)
+        r, g, b = colorsys.hsv_to_rgb(hue, 0.7, 0.9)
+        color = (int(r * 255), int(g * 255), int(b * 255))
+        img = Image.new("RGB", (width, height), color=color)
+        draw = ImageDraw.Draw(img)
+        label = f"#{index}"
+        bbox = draw.textbbox((0, 0), label)
+        tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+        draw.text(((width - tw) / 2, (height - th) / 2), label, fill=(255, 255, 255))
         buf = io.BytesIO()
-        img.save(buf, format="JPEG", quality=50)
+        img.save(buf, format="JPEG", quality=85)
         return buf.getvalue()
     except ImportError:
         raise SystemExit(
@@ -86,7 +95,7 @@ def main(
     np.save(os.path.join(out, "poses_bounds.npy"), poses_bounds)
 
     for i in range(n_views):
-        jpeg_bytes = make_placeholder_jpeg()
+        jpeg_bytes = make_placeholder_jpeg(i, n_views)
         with open(os.path.join(img_dir, f"image_{i:03d}.jpg"), "wb") as f:
             f.write(jpeg_bytes)
 

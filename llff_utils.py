@@ -8,8 +8,8 @@ def parse_llff_poses(poses_bounds: np.ndarray):
     poses = poses_bounds[:, :15].reshape(-1, 3, 5)
     # LLFF R columns are [down, right, backwards].
     # Convert to NeRF convention [right, up, backwards] (OpenGL-style).
-    poses[:, :, 0] *= -1  # down → up
-    c2w = poses[:, :, [1, 0, 2, 3]]  # [right, up, backwards, t]
+    c2w = poses[:, :, [1, 0, 2, 3]]  # [right, down, backwards, t]
+    c2w[:, :, 1] *= -1  # down → up → [right, up, backwards, t]
     near = poses_bounds[:, 15]
     far = poses_bounds[:, 16]
     return c2w, near, far
