@@ -1,22 +1,20 @@
 """Ingest an LLFF scene into LanceDB.
 
 Reads poses_bounds.npy and indexes camera poses as vectors in LanceDB
-for nearest-neighbor search. Comparable to the DreamDB llff/ingest.py.
+for nearest-neighbor search. Comparable to the DreamDB llff-dreamdb/ingest.py.
 
 Usage:
-    python ingest.py --data-dir ../llff/data/synthetic
+    python ingest.py --data-dir ../llff-dreamdb/data/synthetic
 """
 
-import argparse
 from pathlib import Path
 
 import lancedb
 import numpy as np
-import pyarrow as pa
+from params_proto import proto
 
 
 def parse_llff_poses(poses_bounds: np.ndarray):
-    """Parse LLFF poses_bounds array into camera poses and depth bounds."""
     poses = poses_bounds[:, :15].reshape(-1, 3, 5)
     c2w = poses[:, :, :4]  # (N, 3, 4)
     near = poses_bounds[:, 15]
@@ -25,7 +23,6 @@ def parse_llff_poses(poses_bounds: np.ndarray):
 
 
 def load_image_paths(data_dir: Path) -> list[str]:
-    """Find image files, preferring downsampled versions."""
     for subdir in ["images_4", "images_8", "images"]:
         img_dir = data_dir / subdir
         if img_dir.exists():
@@ -39,14 +36,17 @@ def load_image_paths(data_dir: Path) -> list[str]:
     raise FileNotFoundError(f"No image directory found in {data_dir}")
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Ingest LLFF scene into LanceDB")
-    parser.add_argument("--data-dir", required=True, help="Path to LLFF scene directory")
-    parser.add_argument("--db-path", default="./lancedb_data", help="LanceDB directory")
-    parser.add_argument("--table-name", default="llff_poses", help="Table name")
-    args = parser.parse_args()
+@proto.cli
+def main(
+    data_dir: str = None,  # Path to the LLFF scene directory
+    db_path: str = "./lancedb_data",  # LanceDB directory
+    table_name: str = "llff_poses",  # Table name
+):
+    """Ingest an LLFF scene into LanceDB."""
+    if data_dir is None:
+        raise SystemExit("--data-dir is required")
 
-    data_dir = Path(args.data_dir)
+    data_dir = Path(data_dir)
     scene_id = data_dir.name
 
     poses_bounds = np.load(data_dir / "poses_bounds.npy")
@@ -72,9 +72,9 @@ def main():
             }
         )
 
-    db = lancedb.connect(args.db_path)
-    table = db.create_table(args.table_name, records, mode="overwrite")
-    print(f"Created table '{args.table_name}' with {len(table)} rows in {args.db_path}")
+    db = lancedb.connect(db_path)
+    table = db.create_table(table_name, records, mode="overwrite")
+    print(f"Created table '{table_name}' with {len(table)} rows in {db_path}")
 
     table.create_index("camera_pose", index_type="IVF_PQ", num_partitions=2, num_sub_vectors=4)
     print("Built IVF-PQ index on camera_pose")

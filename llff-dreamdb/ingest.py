@@ -7,28 +7,16 @@ Usage:
     python ingest.py --data-dir data/fern --backend http://localhost:9000/examples
 """
 
-import argparse
-import os
 from pathlib import Path
 
 import numpy as np
+from params_proto import proto
 
 import dreamdb_dataset as vd
 
 
 def parse_llff_poses(poses_bounds: np.ndarray):
-    """Parse LLFF poses_bounds array into camera poses and depth bounds.
-
-    Args:
-        poses_bounds: (N, 17) array from poses_bounds.npy
-
-    Returns:
-        c2w: (N, 3, 4) camera-to-world matrices
-        near: (N,) near depth bounds
-        far: (N,) far depth bounds
-    """
     poses = poses_bounds[:, :15].reshape(-1, 3, 5)
-    # LLFF stores in column-major order — undo that
     c2w = poses[:, :, :4]  # (N, 3, 4) camera-to-world [R|t]
     near = poses_bounds[:, 15]
     far = poses_bounds[:, 16]
@@ -36,7 +24,6 @@ def parse_llff_poses(poses_bounds: np.ndarray):
 
 
 def load_images(data_dir: Path) -> list[Path]:
-    """Find image files in the LLFF directory, preferring downsampled versions."""
     for subdir in ["images_4", "images_8", "images"]:
         img_dir = data_dir / subdir
         if img_dir.exists():
@@ -48,17 +35,19 @@ def load_images(data_dir: Path) -> list[Path]:
     raise FileNotFoundError(f"No image directory found in {data_dir}")
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Ingest an LLFF scene into DreamDB")
-    parser.add_argument("--data-dir", required=True, help="Path to the LLFF scene directory")
-    parser.add_argument("--backend", required=True, help="DreamDB backend URL")
-    parser.add_argument("--dataset-name", default="llff", help="Dataset name (default: llff)")
-    args = parser.parse_args()
+@proto.cli
+def main(
+    data_dir: str = None,  # Path to the LLFF scene directory
+    backend: str = None,  # DreamDB backend URL
+    dataset_name: str = "llff",  # Dataset name
+):
+    """Ingest an LLFF scene into DreamDB."""
+    if data_dir is None or backend is None:
+        raise SystemExit("--data-dir and --backend are required")
 
-    data_dir = Path(args.data_dir)
+    data_dir = Path(data_dir)
     scene_id = data_dir.name
 
-    # Load poses
     poses_path = data_dir / "poses_bounds.npy"
     if not poses_path.exists():
         raise FileNotFoundError(f"No poses_bounds.npy in {data_dir}")
@@ -68,14 +57,12 @@ def main():
     n_views = len(c2w)
     print(f"Loaded {n_views} camera poses from {poses_path}")
 
-    # Load images
     image_paths = load_images(data_dir)
     if len(image_paths) != n_views:
         raise ValueError(
             f"Mismatch: {n_views} poses but {len(image_paths)} images"
         )
 
-    # Create schema — camera pose as a 12-d embedding vector
     schema = (
         vd.Schema()
         .add_image("image", mime="jpeg")
@@ -84,13 +71,12 @@ def main():
         .add_scalar_categorical("view_index")
     )
 
-    ds = vd.Dataset.create(args.dataset_name, schema, backend=args.backend)
-    print(f"Created dataset '{args.dataset_name}' on {args.backend}")
+    ds = vd.Dataset.create(dataset_name, schema, backend=backend)
+    print(f"Created dataset '{dataset_name}' on {backend}")
 
-    # Build samples
     samples = []
     for i in range(n_views):
-        pose_vec = c2w[i].flatten().astype(np.float32)  # (12,)
+        pose_vec = c2w[i].flatten().astype(np.float32)
 
         with open(image_paths[i], "rb") as f:
             image_bytes = f.read()
@@ -107,7 +93,6 @@ def main():
     ds.append_many(samples)
     print(f"Ingested {n_views} views from scene '{scene_id}'")
 
-    # Pin a snapshot for reproducibility
     snapshot = ds.snapshot(f"{scene_id}-initial")
     print(f"Snapshot: {snapshot}")
 
