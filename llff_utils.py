@@ -6,7 +6,10 @@ import numpy as np
 def parse_llff_poses(poses_bounds: np.ndarray):
     """Parse LLFF poses_bounds (N, 17) into c2w matrices and depth bounds."""
     poses = poses_bounds[:, :15].reshape(-1, 3, 5)
-    c2w = poses[:, :, :4]  # (N, 3, 4) camera-to-world [R|t]
+    # LLFF R columns are [down, right, backwards].
+    # Convert to NeRF convention [right, up, backwards] (OpenGL-style).
+    poses[:, :, 0] *= -1  # down → up
+    c2w = poses[:, :, [1, 0, 2, 3]]  # [right, up, backwards, t]
     near = poses_bounds[:, 15]
     far = poses_bounds[:, 16]
     return c2w, near, far
@@ -29,7 +32,7 @@ def c2w_to_plucker(c2w: np.ndarray) -> np.ndarray:
     if squeeze:
         c2w = c2w[None]
 
-    # Viewing direction: negative z-axis of the camera frame
+    # Viewing direction: -Z in NeRF/OpenGL convention (camera looks along -Z)
     d = -c2w[:, :3, 2]  # (N, 3)
     d = d / np.linalg.norm(d, axis=1, keepdims=True)
 
