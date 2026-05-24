@@ -25,9 +25,9 @@ def main(
     df = table.to_pandas()
     query_pose = np.array(df.iloc[query_index]["camera_pose"], dtype=np.float32)
 
-    print(f"\nQuery pose (index {query_index}):")
-    print(f"  R = {query_pose[:9].reshape(3, 3).round(3)}")
-    print(f"  t = {query_pose[9:12].round(3)}")
+    print(f"\nQuery Plücker coordinate (index {query_index}):")
+    print(f"  direction = {query_pose[:3].round(3)}")
+    print(f"  moment    = {query_pose[3:6].round(3)}")
 
     results = (
         table.search(query_pose.tolist())

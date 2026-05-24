@@ -8,10 +8,16 @@ Usage:
     python query.py --backend http://localhost:9000/examples --query-index 3 --top-k 5
 """
 
+import sys
+from pathlib import Path
+
 import numpy as np
 from params_proto import proto
 
 import dreamdb_dataset as vd
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from llff_utils import c2w_to_plucker
 
 
 @proto.cli
@@ -31,7 +37,7 @@ def main(
     query_pose = None
     for batch in ds.iter_arrow_batches(batch_size=256, fields=["camera_pose"]):
         poses = batch.column("camera_pose").values.to_numpy(zero_copy_only=False)
-        poses = poses.reshape(batch.num_rows, 12)
+        poses = poses.reshape(batch.num_rows, 6)
         if query_index < len(poses):
             query_pose = poses[query_index]
             break
@@ -39,9 +45,9 @@ def main(
     if query_pose is None:
         raise IndexError(f"Query index {query_index} out of range")
 
-    print(f"\nQuery pose (index {query_index}):")
-    print(f"  R = {query_pose[:9].reshape(3, 3).round(3)}")
-    print(f"  t = {query_pose[9:12].round(3)}")
+    print(f"\nQuery Plücker coordinate (index {query_index}):")
+    print(f"  direction = {query_pose[:3].round(3)}")
+    print(f"  moment    = {query_pose[3:6].round(3)}")
 
     print(f"\nTop-{top_k} nearest camera poses:")
     print("-" * 60)

@@ -7,19 +7,15 @@ Usage:
     python ingest.py --data-dir ../llff-dreamdb/data/synthetic
 """
 
+import sys
 from pathlib import Path
 
 import lancedb
 import numpy as np
 from params_proto import proto
 
-
-def parse_llff_poses(poses_bounds: np.ndarray):
-    poses = poses_bounds[:, :15].reshape(-1, 3, 5)
-    c2w = poses[:, :, :4]  # (N, 3, 4)
-    near = poses_bounds[:, 15]
-    far = poses_bounds[:, 16]
-    return c2w, near, far
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from llff_utils import c2w_to_plucker, parse_llff_poses
 
 
 def load_image_paths(data_dir: Path) -> list[str]:
@@ -58,13 +54,14 @@ def main(
     if len(image_paths) != n_views:
         raise ValueError(f"Mismatch: {n_views} poses but {len(image_paths)} images")
 
+    plucker = c2w_to_plucker(c2w)  # (N, 6)
+
     records = []
     for i in range(n_views):
-        pose_vec = c2w[i].flatten().astype(np.float32)
         records.append(
             {
                 "image_path": image_paths[i],
-                "camera_pose": pose_vec.tolist(),
+                "camera_pose": plucker[i].tolist(),
                 "near": float(near_bounds[i]),
                 "far": float(far_bounds[i]),
                 "scene_id": scene_id,

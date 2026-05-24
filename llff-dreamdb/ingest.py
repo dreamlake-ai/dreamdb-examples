@@ -7,6 +7,7 @@ Usage:
     python ingest.py --data-dir data/fern --backend http://localhost:9000/examples
 """
 
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -14,13 +15,8 @@ from params_proto import proto
 
 import dreamdb_dataset as vd
 
-
-def parse_llff_poses(poses_bounds: np.ndarray):
-    poses = poses_bounds[:, :15].reshape(-1, 3, 5)
-    c2w = poses[:, :, :4]  # (N, 3, 4) camera-to-world [R|t]
-    near = poses_bounds[:, 15]
-    far = poses_bounds[:, 16]
-    return c2w, near, far
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from llff_utils import c2w_to_plucker, parse_llff_poses
 
 
 def load_images(data_dir: Path) -> list[Path]:
@@ -66,7 +62,7 @@ def main(
     schema = (
         vd.Schema()
         .add_image("image", mime="jpeg")
-        .add_embedding("camera_pose", dim=12, algorithm="dreamdb.lsh-cosine")
+        .add_embedding("camera_pose", dim=6, algorithm="dreamdb.lsh-cosine")
         .add_scalar_categorical("scene_id")
         .add_scalar_categorical("view_index")
     )
@@ -74,17 +70,17 @@ def main(
     ds = vd.Dataset.create(dataset_name, schema, backend=backend)
     print(f"Created dataset '{dataset_name}' on {backend}")
 
+    plucker = c2w_to_plucker(c2w)  # (N, 6)
+
     samples = []
     for i in range(n_views):
-        pose_vec = c2w[i].flatten().astype(np.float32)
-
         with open(image_paths[i], "rb") as f:
             image_bytes = f.read()
 
         samples.append(
             {
                 "image": image_bytes,
-                "camera_pose": pose_vec,
+                "camera_pose": plucker[i],
                 "scene_id": scene_id,
                 "view_index": str(i),
             }
