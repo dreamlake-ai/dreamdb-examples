@@ -9,6 +9,7 @@ Usage examples for [DreamDB](https://dreamdb.dreamlake.ai) with real-world datas
 | [`llff-dreamdb/`](llff-dreamdb/) | LLFF scene with Plücker coordinate vector index (DreamDB) |
 | [`llff-lancedb/`](llff-lancedb/) | Same LLFF use case using LanceDB for comparison |
 | [`llff-rerun/`](llff-rerun/) | Convert LLFF scenes to Rerun (.rrd) + LanceDB for visualization |
+| [`llff-vuer/`](llff-vuer/) | Web-based 3D camera pose viewer using Vuer |
 
 ## Getting Started
 
