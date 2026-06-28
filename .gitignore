@@ -6,5 +6,9 @@ build/
 .venv/
 venv/
 
+# Editor / IDE
+.idea/
+.code/
+
 # Generated data (download or generate locally)
 llff/data/
