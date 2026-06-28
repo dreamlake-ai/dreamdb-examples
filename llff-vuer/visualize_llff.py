@@ -92,7 +92,7 @@ def main(
 
     app = Vuer(port=port)
 
-    @app.spawn(start=True)
+    @app.spawn
     async def handler(session: VuerSession):
         await asyncio.sleep(0.5)
 
@@ -126,7 +126,7 @@ def main(
         while True:
             await asyncio.sleep(1.0)
 
-    app.run()
+    app.start()
 
 
 if __name__ == "__main__":

@@ -20,9 +20,7 @@ from params_proto import proto
 
 
 def parse_llff_poses(poses_bounds: np.ndarray):
-    assert poses_bounds.shape[1] == 17, (
-        f"Expected 17 columns, got {poses_bounds.shape[1]}"
-    )
+    assert poses_bounds.shape[1] == 17, f"Expected 17 columns, got {poses_bounds.shape[1]}"
     poses = poses_bounds[:, :15].reshape(-1, 3, 5)
     hwfs = poses[:, :, 4]  # (N, 3) — [height, width, focal_length]
 
@@ -49,9 +47,7 @@ def load_images(data_dir: Path) -> list[tuple[str, np.ndarray]] | None:
         return None
 
     extensions = {".png", ".jpg", ".jpeg", ".bmp", ".tiff"}
-    paths = sorted(
-        p for p in img_dir.iterdir() if p.suffix.lower() in extensions
-    )
+    paths = sorted(p for p in img_dir.iterdir() if p.suffix.lower() in extensions)
     if not paths:
         return None
 
@@ -88,7 +84,13 @@ def c2w_to_plucker(c2w: np.ndarray) -> np.ndarray:
     return plucker[0] if squeeze else plucker
 
 
-def convert_scene(scene_name: str, data_dir: Path, output_dir: Path, no_images: bool, spawn: bool):
+def convert_scene(
+    scene_name: str,
+    data_dir: Path,
+    output_dir: Path,
+    no_images: bool,
+    spawn: bool,
+):
     poses_path = data_dir / "poses_bounds.npy"
     if not poses_path.exists():
         print(f"Skipping {scene_name}: no poses_bounds.npy", file=sys.stderr)
@@ -122,9 +124,15 @@ def convert_scene(scene_name: str, data_dir: Path, output_dir: Path, no_images: 
     rr.log("world/origins", rr.Points3D(camera_positions, radii=0.02), static=True)
 
     h, w, f = hwfs[0]
-    rr.log("world/camera/image", rr.Pinhole(
-        focal_length=float(f), width=int(w), height=int(h),
-    ), static=True)
+    rr.log(
+        "world/camera/image",
+        rr.Pinhole(
+            focal_length=float(f),
+            width=int(w),
+            height=int(h),
+        ),
+        static=True,
+    )
 
     for i in range(n_views):
         rr.set_time("frame", sequence=i)
@@ -150,15 +158,17 @@ def convert_scene(scene_name: str, data_dir: Path, output_dir: Path, no_images: 
 
     records = []
     for i in range(n_views):
-        records.append({
-            "image_path": image_paths[i] if i < len(image_paths) else "",
-            "camera_pose": plucker[i].tolist(),
-            "c2w": c2ws[i].flatten().tolist(),
-            "near": float(bounds[i, 0]),
-            "far": float(bounds[i, 1]),
-            "scene_id": scene_name,
-            "view_index": i,
-        })
+        records.append(
+            {
+                "image_path": image_paths[i] if i < len(image_paths) else "",
+                "camera_pose": plucker[i].tolist(),
+                "c2w": c2ws[i].flatten().tolist(),
+                "near": float(bounds[i, 0]),
+                "far": float(bounds[i, 1]),
+                "scene_id": scene_name,
+                "view_index": i,
+            }
+        )
 
     db = lancedb.connect(str(db_path))
     table = db.create_table("cameras", records, mode="overwrite")
@@ -180,8 +190,8 @@ def main(
         raise SystemExit("--data-dir is required")
 
     try:
-        import rerun as rr
         import lancedb
+        import rerun as rr
     except ImportError as e:
         raise SystemExit(f"Missing dependency: {e}\n  pip install rerun-sdk lancedb")
 
@@ -193,8 +203,7 @@ def main(
         convert_scene(data_dir.name, data_dir, output_dir, no_images, spawn)
     else:
         scene_dirs = sorted(
-            d for d in data_dir.iterdir()
-            if d.is_dir() and (d / "poses_bounds.npy").exists()
+            d for d in data_dir.iterdir() if d.is_dir() and (d / "poses_bounds.npy").exists()
         )
         if not scene_dirs:
             raise SystemExit(f"No LLFF scenes found in {data_dir}")
