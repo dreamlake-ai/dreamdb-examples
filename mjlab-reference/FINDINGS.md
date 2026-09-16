@@ -401,6 +401,42 @@ RL concepts to DreamDB or treating the prototype as a new database reader stack.
 Temporary models/backends are cleaned by the check; only source, conclusions and
 the reproduction command are retained. Ruff check/format pass for the new modules.
 
+### Real PPO window-reader integration
+
+The next claim is actual training-record interoperability, beyond the local
+synthetic fixture. One bounded Slurm run on Linux x86_64 / RTX PRO 6000 used
+released DreamDB 0.0.13 in a private import directory, Python 3.12.3, mjlab 1.6.0,
+Torch 2.9.1, MuJoCo 3.11.0, NumPy 2.5.3 and RSL-RL 5.4.2. The shared environment
+was not modified. No unreleased #381 wheel was used.
+
+`check_training.py integration --batch-rows 512` ran two real PPO updates across
+32 worlds, then exited the trainer before an independent verification process
+opened the recorded Manifest. The existing exact full-record comparison passed.
+The new window checks additionally passed:
+
+- 160 episodes with transitions, 320 step/time requests in batches of 32.
+- 512 unique transitions, 1,024 returned rows (each transition requested twice).
+- Anchor order, episode/step identity and individual terminated/truncated flags
+  match the stored full-record read. Actor input/action dtype, shape and bytes,
+  and combined done flags match the trainer's own rollout arrays directly.
+- Complete episodes and incomplete transition tails are included, with explicit
+  incomplete-prefix opt-in. Reset-only tails have no transition window.
+
+One-time catalogue: 0.166 s. Window reads **plus comparisons**: 5.798 s, 30 SDK
+payload calls across ten request batches. These are one-run integration figures,
+not a comparative benchmark or remote-storage throughput claim. The original
+recording took 24.730 s to drain on the released SDK; it must not be mixed with
+the earlier patched-wheel performance results. No performance tuning followed.
+The whole scheduled job completed in 67 s, exit 0. No playback rerun was needed;
+its implementation was unchanged.
+
+The first job stopped before training because the shared virtual environment
+did not contain pip. Installing the released wheel into private imports with the
+host's existing pip corrected this setup error; no application change was needed.
+The coordinator removed generated backends, rollout witnesses and caches.
+Task staging/imports/logs are removed after retaining these conclusions and the
+reproduction command, not archived as another evidence framework.
+
 ## How to report an actual finding
 
 Record: user-facing operation; exact SDK/core and example versions; smallest

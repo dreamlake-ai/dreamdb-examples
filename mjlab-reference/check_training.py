@@ -211,6 +211,7 @@ def ppo(root, batch_rows=64):
 def verify_ppo(root):
     import dreamdb
     from store import episode_status, read_window
+    from windows import EpisodeReader, StepWindow, TimeWindow
 
     receipt = json.loads((root / "ppo.json").read_text())
     dataset = dreamdb.Dataset.open_by_manifest(
@@ -224,6 +225,7 @@ def verify_ppo(root):
             "episode_id",
             "step_id",
             "sim_step",
+            "sim_time",
             "obs_t",
             "action",
             "terminated",
@@ -260,6 +262,83 @@ def verify_ppo(root):
     assert sum(r["truncated"] for r in transitions) > 0
     end = read_window(dataset, ["kind"], len(rows) + 1, len(rows) + 2)
     assert end[0]["kind"] == "run_end"
+    # The trainer has exited. Exercise the public window API on its actual
+    # recording, not another generated fixture or a second recording hook.
+    started = time.perf_counter()
+    reader = EpisodeReader(
+        (root / "backend").as_uri(), receipt["manifest"], receipt["submitted_rows"] + 2
+    )
+    index_seconds = time.perf_counter() - started
+    groups = {}
+    for row in transitions:
+        groups.setdefault((row["env_id"], row["episode_id"]), []).append(row)
+    # Simulation times are explicit recorded values, not ordinal anchors.
+    requests, expected = [], []
+    for (env_id, episode_id), episode in sorted(groups.items()):
+        requests.extend(
+            [
+                StepWindow(env_id, episode_id, 0, len(episode)),
+                TimeWindow(
+                    env_id,
+                    episode_id,
+                    episode[0]["sim_time"],
+                    float(np.nextafter(episode[-1]["sim_time"], np.inf)),
+                ),
+            ]
+        )
+        expected.extend([episode, episode])
+    fields = [
+        "env_id",
+        "episode_id",
+        "step_id",
+        "sim_step",
+        "obs_t",
+        "action",
+        "terminated",
+        "truncated",
+    ]
+    calls = output_rows = 0
+    started = time.perf_counter()
+    with np.load(root / "rollout.npz") as rollout:
+        for offset in range(0, len(requests), 32):
+            batch = reader.read_windows(
+                requests[offset : offset + 32], fields=fields, allow_incomplete=True
+            )
+            calls += batch.stats.calls
+            output_rows += batch.output_rows
+            for result, episode in zip(batch.windows, expected[offset : offset + 32], strict=True):
+                assert result.manifest == receipt["manifest"]
+                assert [r["_anchor"] for r in result.rows] == [r["_anchor"] for r in episode]
+                for actual, source in zip(result.rows, episode, strict=True):
+                    for field in fields:
+                        if field not in ("obs_t", "action"):
+                            assert actual[field] == source[field], field
+                    step, env_id = actual["sim_step"] - 1, actual["env_id"]
+                    for field, array in (("obs_t", "obs"), ("action", "actions")):
+                        value, truth = actual[field], rollout[array][step, env_id]
+                        assert value.dtype == truth.dtype and value.shape == truth.shape
+                        assert value.tobytes() == truth.tobytes(), field
+                    assert (actual["terminated"] or actual["truncated"]) == bool(
+                        rollout["dones"][step, env_id].item()
+                    )
+    assert output_rows == 2 * ENVS * STEPS
+    print(
+        "PPO_WINDOW_ACCEPTANCE "
+        + json.dumps(
+            {
+                "result": "PASS",
+                "manifest": reader.manifest,
+                "episodes_with_transitions": len(groups),
+                "requests": len(requests),
+                "output_rows": output_rows,
+                "unique_transitions": len(transitions),
+                "index_seconds": index_seconds,
+                "read_and_compare_seconds": time.perf_counter() - started,
+                "payload_sdk_calls": calls,
+            }
+        ),
+        flush=True,
+    )
     print(
         "PPO_ACCEPTANCE "
         + json.dumps(
@@ -277,14 +356,17 @@ def verify_ppo(root):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "mode", nargs="?", default="all", choices=["all", "performance", "ppo", "verify"]
+        "mode",
+        nargs="?",
+        default="all",
+        choices=["all", "integration", "performance", "ppo", "verify"],
     )
     parser.add_argument("directory", nargs="?", type=Path)
     parser.add_argument("--batch-rows", type=int, default=64)
     args = parser.parse_args()
-    if args.mode == "all":
+    if args.mode in ("all", "integration"):
         if args.directory:
-            parser.error("all creates and cleans its own directory")
+            parser.error("coordinator creates and cleans its own directory")
         with tempfile.TemporaryDirectory(prefix="ddb-mjlab-training-") as temp:
             environment = {
                 **os.environ,
@@ -293,7 +375,12 @@ if __name__ == "__main__":
                 "XDG_CACHE_HOME": temp + "/cache",
                 "CUDA_CACHE_PATH": temp + "/cuda",
             }
-            for mode in ("performance", "ppo", "verify"):
+            modes = (
+                ("ppo", "verify")
+                if args.mode == "integration"
+                else ("performance", "ppo", "verify")
+            )
+            for mode in modes:
                 command = [
                     sys.executable,
                     "-B",

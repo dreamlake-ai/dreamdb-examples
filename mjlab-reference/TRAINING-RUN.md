@@ -1,5 +1,26 @@
 # Bounded training/performance run plan
 
+## Episode-window integration follow-up
+
+Issue #4 / PR #5: the new claim is that the window reader can consume actual
+multi-environment PPO recordings, not only the synthetic storage fixture. Run
+`check_training.py integration --batch-rows 512` inside one bounded Slurm GPU
+allocation. This runs only two PPO updates and a separate verification process;
+it does not repeat the fixed-action performance sweep. Use released DreamDB
+0.0.13 in a private import directory, without changing the shared environment.
+
+After the trainer exits, form step and simulation-time windows for all recorded
+episodes containing transitions (including explicit incomplete-prefix opt-in).
+Read requests in bounded batches and compare every returned actor input/action/
+done directly with the actual rollout arrays, using recorded simulation-step and
+environment identities. Also compare anchor order and individual terminal flags
+with the existing full-record read. Any wrong episode, missing/reordered row or
+changed payload fails the check. This is the minimum real integration boundary;
+no new oracle framework, playback rerun or throughput benchmark is required.
+Report counts and read-call elapsed time without a production speed claim.
+
+## Original training/performance slice
+
 Written before submission. Same isolated local backend and fixed-model Cartpole
 variation as CAPTURE-RUN.md; 32 parallel worlds, seed 71, noise off, even worlds
 terminate after three steps, all time out after four. Not native task convergence.

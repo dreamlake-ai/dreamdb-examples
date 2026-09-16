@@ -196,6 +196,18 @@ minimal MuJoCo fixture only to create a valid recorded model asset:
 .venv/bin/python -B check_windows.py
 ```
 
+For the actual mjlab/RSL-RL integration, run inside a bounded Slurm GPU allocation
+with the capture/training dependencies:
+
+```sh
+python -B -u check_training.py integration --batch-rows 512
+```
+
+This runs two PPO updates, exits the trainer, then checks step and simulation-time
+windows in a separate process against the trainer's actual actor inputs, actions
+and done flags. It uses the same cleanup coordinator but skips the fixed-action
+performance sweep. See [TRAINING-RUN.md](TRAINING-RUN.md) for scope and bounds.
+
 Use one pinned reader across calls; build the identity catalogue once:
 
 ```python
