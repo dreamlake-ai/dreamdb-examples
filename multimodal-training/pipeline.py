@@ -33,20 +33,73 @@ def preflight(root):
     print("STAGES_PREFLIGHT PASS: ready tensor bytes survive materialize/deliver/mmap", flush=True)
 
 
+def frame_preflight(root):
+    import dreamdb
+    import numpy as np
+    from data import png
+    from framebank import FrameBatches, repack
+    from run import preflight as storage_preflight
+    from run import same
+    from stages import LocalBatches, deliver, materialize
+
+    storage_preflight(root)
+    ds = dreamdb.Dataset.open("capture", backend=(root / "backend").as_uri())
+    # A second, six-step episode creates three genuinely overlapping windows.
+    rows = [
+        {
+            "_anchor": 5 + step,
+            "env_id": 1,
+            "episode_id": 0,
+            "step_id": step,
+            "sim_time": step * 0.05,
+            "terminated": False,
+            "truncated": step == 5,
+            "image": png(np.full((64, 64, 3), 17 * step, dtype=np.uint8)),
+            "sensor": np.arange(4, dtype="<f4") + step,
+            "action": np.asarray([step / 8], dtype="<f4"),
+        }
+        for step in range(6)
+    ]
+    assert ds.append_many(rows, commit=True) == 6
+    (root / "receipt.json").write_text(
+        json.dumps({"manifest": ds.current_manifest(), "end_anchor": 11})
+    )
+    materialize(root, root / "ready")
+    repack(root / "ready", root / "ready-frames")
+    deliver(root / "ready-frames", root / "delivered-frames")
+    old, bank = LocalBatches(root / "ready"), FrameBatches(root / "delivered-frames")
+    # Actual requested reordering and repetition, not a mapping-validator control.
+    indices = [3, 0, 2, 1, 3]
+    same(old.numpy_batch(indices), bank.numpy_batch(indices))
+    print("FRAMEBANK_PREFLIGHT PASS: overlapping/reordered/duplicate windows match", flush=True)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "mode", choices=["all", "preflight", "prepare", "deliver", "train-local", "verify-local"]
+        "mode",
+        choices=[
+            "all",
+            "compare-frames",
+            "preflight",
+            "preflight-frames",
+            "prepare",
+            "prepare-frames",
+            "deliver",
+            "train-local",
+            "verify-local",
+        ],
     )
     parser.add_argument("directory", nargs="?", type=Path)
+    parser.add_argument("--layout", choices=["windows", "frames"], default="windows")
     args = parser.parse_args()
-    if args.mode in ("all", "preflight"):
+    if args.mode in ("all", "compare-frames", "preflight", "preflight-frames"):
         if args.directory:
             parser.error("coordinator owns its temporary directory")
         with tempfile.TemporaryDirectory(prefix="ddb-training-stages-") as temp:
             root = Path(temp)
-            if args.mode == "preflight":
-                preflight(root)
+            if args.mode in ("preflight", "preflight-frames"):
+                (frame_preflight if args.mode == "preflight-frames" else preflight)(root)
             else:
                 environment = {
                     **os.environ,
@@ -54,15 +107,30 @@ def main():
                     "XDG_CACHE_HOME": temp + "/cache",
                     "CUDA_CACHE_PATH": temp + "/cuda",
                 }
-                for script, mode in [
+                phases = [
                     ("run.py", "capture"),
                     ("run.py", "train"),
                     ("pipeline.py", "prepare"),
                     ("pipeline.py", "deliver"),
                     ("pipeline.py", "verify-local"),
-                ]:
-                    if mode == "verify-local":
+                ]
+                if args.mode == "compare-frames":
+                    phases = [
+                        ("run.py", "capture"),
+                        ("pipeline.py", "prepare"),
+                        ("pipeline.py", "deliver"),
+                        ("pipeline.py", "prepare-frames"),
+                        ("pipeline.py", "verify-local"),
+                        ("pipeline.py", "verify-local"),
+                    ]
+                for phase, (script, mode) in enumerate(phases):
+                    if mode == "verify-local" and (root / "backend").exists():
                         (root / "backend").rename(root / "offline-source")
+                    extra = (
+                        ["--layout", "frames"]
+                        if args.mode == "compare-frames" and phase == len(phases) - 1
+                        else []
+                    )
                     with subprocess.Popen(
                         [
                             sys.executable,
@@ -71,6 +139,7 @@ def main():
                             str(Path(__file__).with_name(script)),
                             mode,
                             temp,
+                            *extra,
                         ],
                         env=environment,
                         start_new_session=True,
@@ -92,6 +161,12 @@ def main():
             from stages import materialize
 
             materialize(root, root / "ready")
+        elif args.mode == "prepare-frames":
+            from framebank import repack
+            from stages import deliver
+
+            repack(root / "ready", root / "ready-frames")
+            deliver(root / "ready-frames", root / "delivered-frames")
         elif args.mode == "deliver":
             from stages import deliver
 
@@ -99,7 +174,7 @@ def main():
         else:
             from local_train import train_local
 
-            train_local(root, verify=args.mode == "verify-local")
+            train_local(root, verify=args.mode == "verify-local", layout=args.layout)
 
 
 if __name__ == "__main__":

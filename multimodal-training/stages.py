@@ -93,6 +93,10 @@ def materialize(root, destination):
 
 def load_manifest(root):
     manifest = json.loads((root / "manifest.json").read_text())
+    if manifest["profile"] == "cartpole-four-frame-f32-framebank-v1":
+        from framebank import validate_manifest
+
+        return validate_manifest(manifest)
     if manifest["profile"] != PROFILE:
         raise ValueError("unsupported training input profile")
     count = 0
@@ -116,7 +120,8 @@ def deliver(source, destination):
     manifest = load_manifest(source)
     destination.mkdir(exist_ok=False)
     count = size = 0
-    for shard in manifest["shards"]:
+    groups = manifest["shards"] if "shards" in manifest else [{"files": manifest["files"]}]
+    for shard in groups:
         for spec in shard["files"].values():
             checksum = hashlib.sha256()
             copied = 0
@@ -184,6 +189,7 @@ class LocalBatches:
             self.arrays.append(mapped)
             self.locations.extend((index, row) for row in range(shard["count"]))
         self.open_seconds = time.perf_counter() - start
+        self.sample_shapes = {name: array.shape[1:] for name, array in self.arrays[0].items()}
 
     def fill(self, indices, buffers):
         if not 1 <= len(indices) <= 16:
