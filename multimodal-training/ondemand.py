@@ -58,8 +58,15 @@ def train(root, mode):
     with np.load(root / "witness.npz") as f:
         witness = {k: f[k] for k in ("images", "sensors", "actions", "identities")}
     lookup = {tuple(row): i + 1 for i, row in enumerate(witness["identities"])}
-    windows = [[lookup[(env, episode, step)] for step in range(start, start + 4)]
-               for env in range(6) for episode in range(2) for start in range(13)]
+    groups = {}
+    for env, episode, step in lookup:
+        if env < 6:
+            groups.setdefault((env, episode), []).append(step)
+    windows = []
+    for (env, episode), steps in sorted(groups.items()):
+        assert sorted(steps) == list(range(len(steps)))
+        windows.extend([lookup[(env, episode, step)] for step in range(start, start + 4)]
+                       for start in range(len(steps) - 3))
     rng = np.random.default_rng(71)
     expected_batches = []
     for _ in range(2):
@@ -75,6 +82,7 @@ def train(root, mode):
                   cache_evictions=0, cache_peak_bytes=0,
                   sdk_seconds=0.0, page_hits=0, page_misses=0, page_evictions=0,
                   page_peak_bytes=0, batch_waits=[],
+                  returned_rows=0, payload_bytes=0, selected_records=0, selected_fetched_bytes=0,
                   worker_rss_kib=None, first_batch=None, max_batch_bytes=0)
     started = time.perf_counter()
     if mode in ("prefetch", "cached", "pages"):
@@ -110,7 +118,8 @@ def train(root, mode):
             report["producer_work"] += seconds
             for key in ("sdk_calls", "decoded_frames", "read_seconds", "decode_seconds",
                         "assembly_seconds", "transform_seconds", "cache_hits", "cache_misses",
-                        "cache_evictions", "sdk_seconds", "page_hits", "page_misses", "page_evictions"):
+                        "cache_evictions", "sdk_seconds", "page_hits", "page_misses", "page_evictions",
+                        "returned_rows", "payload_bytes", "selected_records", "selected_fetched_bytes"):
                 report[key] += stats[key]
             report["cache_peak_bytes"] = max(report["cache_peak_bytes"], stats["cache_peak_bytes"])
             report["page_peak_bytes"] = max(report["page_peak_bytes"], stats["page_peak_bytes"])
@@ -143,7 +152,7 @@ def train(root, mode):
                 raise ValueError("nonfinite loss")
             report["batches"] += 1
         report["loop_seconds"] = time.perf_counter() - started
-        assert report["batches"] == 20
+        assert report["batches"] == len(expected_batches)
         report["parent_rss_kib"] = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
         report["result"] = "PASS"
         print("ONDEMAND " + json.dumps(report), flush=True)

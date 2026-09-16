@@ -99,6 +99,18 @@ tensor or augmentation is cached. The tiny compressed fixture fits this budget;
 results must not be treated as a larger-than-cache dataset benchmark.
 See [PAGES-RESULTS.md](PAGES-RESULTS.md) for projection costs and paired results.
 
+[AMPLIFICATION.md](AMPLIFICATION.md) tests the next boundary (#18): a real
+1,024-record capture, unchanged task semantics, and a working set larger than
+the same 1 MiB cache. `amplification.slurm` captures, traces three bounded public
+reads, then runs prefetch/pages/pages/prefetch. `amplification-repeat.slurm` reads
+the same range twice through one handle, tracing only the second query. Schedule
+it after the training job so tracing cannot perturb its timing. `trace_reads.py`
+summarizes successful backend file-read bytes between the explicit markers; these
+are filesystem-delivered bytes, not physical disk traffic. Delete the task traces
+after recording conclusions. The actual reader is still released 0.0.13, not #384.
+See [AMPLIFICATION-RESULTS.md](AMPLIFICATION-RESULTS.md): the larger working set
+thrashes this cache, and application overfetch is separate from metadata rereads.
+
 ## Training-ready inputs: two delivery stages
 
 [STAGES.md](STAGES.md) defines the next slice ([issue #8](https://github.com/dreamlake-ai/dreamdb-examples/issues/8)).
