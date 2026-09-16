@@ -348,6 +348,95 @@ allocation. Stop tuning at this material result; remaining array/file overhead
 is not claimed fixed. Follow [core #381](https://github.com/dreamlake-ai/dreamdb-core/issues/381)
 for review/merge/release, rather than assuming users already have the fix.
 
+## Episode-window read prototype (2026-09-16)
+
+[Issue #4](https://github.com/dreamlake-ai/dreamdb-examples/issues/4) starts with
+the public APIs already present in released `dreamdb==0.0.13`; no new core API
+or dependency on the unreleased #381 fix. Python 3.12.13/macOS, NumPy 2.5.3,
+MuJoCo 3.11.0 for the existing minimal model fixture. The reader itself needs
+only DreamDB/NumPy and application semantics. This is a direct local SDK check,
+not a core testbox or GPU/training verdict.
+
+`check_windows.py` uses eight interleaved copies of the existing 11-event storage
+fixture (88 events), a real minimal model, and the public writer. The reader
+reopens a pinned Manifest; a later append completes an old incomplete episode in
+a new snapshot, but cannot alter old window results. Exact anchors, ordering,
+scalar values, ndarray dtype/shape/bytes and absent next observations pass for
+step/time/duplicate/overlapping requests. Incomplete episodes require opt-in,
+missing steps are refused, and overlapping output arrays do not alias. A later
+reader sees the newly completed episode. No playback/trainer code was changed.
+
+Projection is observed at the actual SDK call boundary: index reads contain
+identity/clock/flags plus the initial metadata read, no model/array payload.
+Payload reads contain the requested fields plus `kind`, necessary to preserve
+terminal rows under an optional-only projection. Three distinct 32-ordinal
+pages are fetched once each for the mixed overlap scenario. There is no second
+framework to validate these counters.
+
+Separate comparison uses 32 requests (16 episodes twice, two transitions each),
+same fields and 256-ordinal page size as existing `read_episode`. All 64 output
+rows are compared to input in both paths. One local run, not a timing threshold:
+
+| Work | Existing episode reader | Batched reader |
+|---|---:|---:|
+| One-time catalogue construction | none | 10.34 ms |
+| Payload/selection call elapsed | 637.15 ms | 18.41 ms |
+| Scalar-query calls during requests | 64 | 0 |
+| Projected window calls during requests | 32 | 1 |
+| Rows returned by payload window calls | 2,848 | 89 |
+| Output rows, including requested repetitions | 64 | 64 |
+
+The initial 32-row-page catalogue took 20.33 ms / four calls; it is separate
+from the 256-row-page comparison above. File cache state is uncontrolled and
+the fixture was freshly written: "index construction" does not mean cold disk
+cache. Counters include actual public calls and returned rows, not physical
+object GETs, network bytes or total memory. The catalogue has an explicit prefix
+cap and still grows with indexed transitions. Batch payload memory also depends
+on field dimensions; native Track/index memory is not bounded by `page_rows`.
+This validates the overlap-saving mechanism, not large-corpus or S3 throughput.
+
+No new core deficiency was demonstrated by this slice. Future generic bounded
+selection/paging work must establish its own reachable need, rather than adding
+RL concepts to DreamDB or treating the prototype as a new database reader stack.
+Temporary models/backends are cleaned by the check; only source, conclusions and
+the reproduction command are retained. Ruff check/format pass for the new modules.
+
+### Real PPO window-reader integration
+
+The next claim is actual training-record interoperability, beyond the local
+synthetic fixture. One bounded Slurm run on Linux x86_64 / RTX PRO 6000 used
+released DreamDB 0.0.13 in a private import directory, Python 3.12.3, mjlab 1.6.0,
+Torch 2.9.1, MuJoCo 3.11.0, NumPy 2.5.3 and RSL-RL 5.4.2. The shared environment
+was not modified. No unreleased #381 wheel was used.
+
+`check_training.py integration --batch-rows 512` ran two real PPO updates across
+32 worlds, then exited the trainer before an independent verification process
+opened the recorded Manifest. The existing exact full-record comparison passed.
+The new window checks additionally passed:
+
+- 160 episodes with transitions, 320 step/time requests in batches of 32.
+- 512 unique transitions, 1,024 returned rows (each transition requested twice).
+- Anchor order, episode/step identity and individual terminated/truncated flags
+  match the stored full-record read. Actor input/action dtype, shape and bytes,
+  and combined done flags match the trainer's own rollout arrays directly.
+- Complete episodes and incomplete transition tails are included, with explicit
+  incomplete-prefix opt-in. Reset-only tails have no transition window.
+
+One-time catalogue: 0.166 s. Window reads **plus comparisons**: 5.798 s, 30 SDK
+payload calls across ten request batches. These are one-run integration figures,
+not a comparative benchmark or remote-storage throughput claim. The original
+recording took 24.730 s to drain on the released SDK; it must not be mixed with
+the earlier patched-wheel performance results. No performance tuning followed.
+The whole scheduled job completed in 67 s, exit 0. No playback rerun was needed;
+its implementation was unchanged.
+
+The first job stopped before training because the shared virtual environment
+did not contain pip. Installing the released wheel into private imports with the
+host's existing pip corrected this setup error; no application change was needed.
+The coordinator removed generated backends, rollout witnesses and caches.
+Task staging/imports/logs are removed after retaining these conclusions and the
+reproduction command, not archived as another evidence framework.
+
 ## How to report an actual finding
 
 Record: user-facing operation; exact SDK/core and example versions; smallest
