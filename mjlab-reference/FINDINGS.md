@@ -288,6 +288,66 @@ Temporary datasets, rollout witnesses, JIT caches and task-private imports were
 removed after recording these results. The application staging race is recorded
 once; no staging-validator framework was added.
 
+## Core #381 consumer feedback loop (2026-09-16)
+
+The prototype exposed a generic ordered-scalar cost, not an RL-specific need:
+incremental B-tree insertion encoded every prefix of a fitting page for every
+new value. The candidate tries the full page first and retains the existing
+split scan on overflow. No adapter/data-layout changes or private APIs.
+
+Core source `5aa915a` (product patch `2587849`, scoped testbox subject `f567bd5`),
+unchanged prototype `b0aaf17`. Testbox passed existing scalar page pruning,
+sibling reuse, root split and failed-publication behavior (five tests), fmt and
+scoped clippy. No new mutation framework. Linux candidate built with Rust 1.98.1,
+maturin 1.14.1; wheel SHA256
+`04ebb6c3d216e47a961fd4babac1cbb515b60ae9291b51a1e80906eb073998f8`.
+It still labels itself 0.0.13 but is **not a published package**. Compare explicit
+wheel/import paths, not the version string alone.
+
+Slurm jobs 147373 (CPU build, 3m13s) and 147374 (one GPU, 1m51s) exited 0.
+Same node031/RTX PRO 6000, driver 590.48.01 and installed versions above. Within
+one allocation the released wheel and candidate each ran the unchanged three
+alternating off/on pairs at batch_rows=512, followed by two real PPO updates.
+The candidate additionally ran the existing storage/writer and capture/playback
+checks. Released and candidate wheels are not compiler-identical builds.
+
+| Measurement | Released 0.0.13 | Candidate |
+|---|---|---|
+| Complete recording + drain, three runs (s) | 5.31916 / 5.31032 / 5.22361 | 0.50458 / 0.43628 / 0.45507 |
+| Recording off, three runs (s) | 0.03621 / 0.03579 / 0.03578 | 0.04631 / 0.03572 / 0.03570 |
+| Child append, three runs (s) | 5.23555 / 5.22690 / 5.16859 | 0.45031 / 0.37823 / 0.40021 |
+| Backend files / bytes | 6,386 / 1,151,640 | 6,386 / 1,151,475 |
+| Maximum sampled writer RSS across three runs (MiB) | 48.42 | 46.19 |
+| PPO learn / final drain (s) | 0.22139 / 5.14595 | 0.23085 / 0.39408 |
+| PPO sampled producer / writer RSS (MiB) | 2295.86 / 48.08 | 2338.34 / 45.65 |
+
+Median complete recording time improves **11.7x**, without dropping the 688 events
+or reducing the two publications / 2 MiB transport arena. Zero queue wait is still
+only a short burst result, not sustained throughput. No file-count reduction;
+byte totals include metadata/history and are not the exact-payload oracle.
+
+Both PPO runs passed exact comparison of all 512 actor inputs/actions/done flags
+to the actual rollout, with finite changed actor parameters. Candidate capture
+passed 464 events / 352 transitions, max array difference 0.0. Independent playback
+passed 11 pose samples / 11 distinct rendered frames, max pose error 0.0, plus
+pause/step/seek/timed advance and incomplete-prefix opt-in. Native window delivery,
+large fleets, remote storage, sustained throughput and convergence remain untested.
+
+One build-tool error: `uv` was absent on the worker; the first job stopped before
+compilation and its waiting dependent job was cancelled. Task-private installation
+through existing pip fixed it without changing the shared runtime. No test changes
+or additional validation layers. Generated backends/caches were removed by the
+coordinators; task staging/build artifacts are cleaned after retaining these
+conclusions and pinned reproduction information.
+
+Reproduce: build the pinned core's Python wheel with `maturin build --release
+--locked`, install it into a separate import directory, then run the existing
+`check_training.py --batch-rows 512` for each wheel and `check_storage.py`,
+`check_writer.py`, `check_capture.py` for the candidate inside the bounded Slurm
+allocation. Stop tuning at this material result; remaining array/file overhead
+is not claimed fixed. Follow [core #381](https://github.com/dreamlake-ai/dreamdb-core/issues/381)
+for review/merge/release, rather than assuming users already have the fix.
+
 ## How to report an actual finding
 
 Record: user-facing operation; exact SDK/core and example versions; smallest

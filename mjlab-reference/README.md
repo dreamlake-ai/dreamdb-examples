@@ -178,3 +178,10 @@ The faster loop alone hides the final drain; do not report it as sustained
 low-overhead training. PPO's 512 stored actor inputs/actions/done flags matched
 the trainer's own rollout arrays exactly for both batch sizes. This establishes
 integration, not convergence, scale, crash recovery or restartable training.
+
+The subsequent core #381 candidate reduced the same 512-row-batch workload's
+median recording+drain from **5.31 s to 0.455 s (11.7x)** on the original Slurm
+boundary, with PPO exact readback and independent playback passing. This is an
+unreleased core fix, not another adapter/layout change. See [FINDINGS.md](FINDINGS.md)
+for the pinned wheel, individual runs, memory and limitations; it is not a
+sustained-throughput or large-fleet claim.
