@@ -18,3 +18,13 @@ materialized PyList; Rust iter_time_range builds per-call lookups and assembles
 selected fields, including per-anchor array reads. This is source context, not
 proof of installed-wheel build provenance nor proof of which internal operation
 dominates. Use the installed DreamDB 0.0.13 public API for the actual measurement.
+
+Probe 147492: 256 rows, image SDK .063 s / 632,562 B, arrays .333 s /
+5,120 B, combined .386 s / 637,682 B. Python collection <.0002 s each.
+Chosen comparison: replace the 1 MiB decoded-record cache with a 1 MiB raw page
+LRU keyed by exact projection/range within the pinned Reader. Identity scans are
+not cached; only payload pages. Keep PNG compressed; copy array values into owned
+storage, count bytes plus anchors, skip oversized pages, evict before admission.
+No extra decoded-record cache in this mode. Same batches and checks as before.
+This tiny compressed working set fits the budget; measure first-use and later
+batch waits separately and report that limitation, not a large-dataset guarantee.

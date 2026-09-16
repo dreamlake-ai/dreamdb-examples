@@ -91,6 +91,14 @@ tensors. The default Reader still has zero cache. The byte budget covers retaine
 array payload, not total process memory; transformation and augmentation belong
 after the cache. See the measured stage breakdown in CACHE-RESULTS.md.
 
+[PAGES.md](PAGES.md) follows the public read bottleneck (#16). `pages.slurm probe`
+captures and compares projections; `pages.slurm train` reuses that capture for
+decoded-record versus raw-page cache comparisons. `ondemand.py pages DIR` uses a
+1 MiB raw PNG/array page cache and disables the decoded-record cache. No training
+tensor or augmentation is cached. The tiny compressed fixture fits this budget;
+results must not be treated as a larger-than-cache dataset benchmark.
+See [PAGES-RESULTS.md](PAGES-RESULTS.md) for projection costs and paired results.
+
 ## Training-ready inputs: two delivery stages
 
 [STAGES.md](STAGES.md) defines the next slice ([issue #8](https://github.com/dreamlake-ai/dreamdb-examples/issues/8)).
