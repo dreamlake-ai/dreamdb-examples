@@ -1,0 +1,6 @@
+-r requirements-storage.txt
+mjlab==1.6.0
+torch==2.9.1
+mujoco-warp==3.11.0
+warp-lang==1.14.0
+rsl-rl-lib==5.4.2
