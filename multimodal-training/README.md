@@ -84,6 +84,13 @@ It captures once then runs serial/prefetch/prefetch/serial in separate processes
 The script retains its task directory for results; remove that exact directory
 after recording conclusions. No core changes or remote transfer benchmark.
 
+[CACHE.md](CACHE.md) adds an optional 1 MiB decoded-record LRU experiment (#14).
+`cache.slurm` runs prefetch/cached/cached/prefetch on one capture. `ondemand.py cached
+DIR` keeps raw uint8 pixels and recorded sensor/action arrays, not task-shaped float
+tensors. The default Reader still has zero cache. The byte budget covers retained
+array payload, not total process memory; transformation and augmentation belong
+after the cache. See the measured stage breakdown in CACHE-RESULTS.md.
+
 ## Training-ready inputs: two delivery stages
 
 [STAGES.md](STAGES.md) defines the next slice ([issue #8](https://github.com/dreamlake-ai/dreamdb-examples/issues/8)).
