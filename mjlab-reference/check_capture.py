@@ -100,6 +100,7 @@ def capture_run(root):
             },
             "mujoco_version": mujoco.__version__,
             "platform": platform.platform(),
+            "model_platform": {"system": platform.system(), "machine": platform.machine()},
             "mjlab_version": importlib.metadata.version("mjlab"),
             "torch_version": torch.__version__,
             "seed": SEED,
@@ -137,10 +138,13 @@ def capture_run(root):
 
 def reference_run(root):
     """Observe terminal state outside hooks by disabling auto reset."""
+    import mujoco
     import torch
 
     env = make_env(auto_reset=False)
     rows = []
+    poses = []
+    pose_data = mujoco.MjData(env.sim.mj_model)
     episodes = np.zeros(ENVS, dtype=np.int64)
     steps = np.zeros(ENVS, dtype=np.int64)
 
@@ -155,10 +159,31 @@ def reference_run(root):
             for name in ["mocap_pos", "mocap_quat"]
         }
 
+    def pose_at(i, kind, step):
+        # Small public-simulation witnesses, including terminal and next reset.
+        if i < 2 and episodes[i] < 2 and (kind == "reset" or episodes[i] == 0):
+            # GPU-derived xpos can lag integration. Recompute geometry from the
+            # live primary state in the original model, without stepping or
+            # mutating the simulation. Playback has neither this model nor env.
+            pose_data.qpos[:] = cpu(env.sim.data.qpos[i])
+            pose_data.mocap_pos[:] = cpu(env.sim.data.mocap_pos[i])
+            pose_data.mocap_quat[:] = cpu(env.sim.data.mocap_quat[i])
+            mujoco.mj_kinematics(env.sim.mj_model, pose_data)
+            poses.append(
+                {
+                    "env_id": int(i),
+                    "episode_id": int(episodes[i]),
+                    "step": -1 if kind == "reset" else int(step),
+                    "xpos": pose_data.xpos.tolist(),
+                    "xmat": pose_data.xmat.tolist(),
+                }
+            )
+
     def resets(ids, observation, sim_step):
         pos, vel, times = cpu(env.sim.data.qpos), cpu(env.sim.data.qvel), cpu(env.sim.data.time)
         obs = cpu(observation["actor"])
         for i in ids:
+            pose_at(i, "reset", 0)
             rows.append(
                 {
                     "kind": "reset",
@@ -195,6 +220,7 @@ def reference_run(root):
                     cpu(after["actor"]),
                 )
                 for i in range(ENVS):
+                    pose_at(i, "transition", steps[i])
                     done = bool(term[i] or trunc[i])
                     row = {
                         "kind": "transition",
@@ -226,6 +252,7 @@ def reference_run(root):
                     obs, _ = env.reset(env_ids=ids)
                     resets(selected, obs, step + 1)
         (root / "reference.json").write_text(json.dumps(rows, allow_nan=False))
+        (root / "poses.json").write_text(json.dumps(poses, allow_nan=False))
         print(f"REFERENCE_DONE {len(rows)} events", flush=True)
     finally:
         env.close()
@@ -310,7 +337,10 @@ def verify(root):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "mode", nargs="?", default="all", choices=["all", "capture", "reference", "verify"]
+        "mode",
+        nargs="?",
+        default="all",
+        choices=["all", "capture", "reference", "verify", "playback"],
     )
     parser.add_argument("directory", nargs="?", type=Path)
     args = parser.parse_args()
@@ -325,7 +355,7 @@ if __name__ == "__main__":
                 "XDG_CACHE_HOME": str(Path(temp) / "cache"),
                 "CUDA_CACHE_PATH": str(Path(temp) / "cuda"),
             }
-            for mode in ["capture", "reference", "verify"]:
+            for mode in ["capture", "reference", "verify", "playback"]:
                 command = [sys.executable, "-B", "-u", __file__, mode, temp]
                 with subprocess.Popen(command, env=environment, start_new_session=True) as child:
                     try:
@@ -343,6 +373,11 @@ if __name__ == "__main__":
         if args.directory is None:
             parser.error("individual modes require a directory")
         args.directory.mkdir(exist_ok=True)
-        {"capture": capture_run, "reference": reference_run, "verify": verify}[args.mode](
-            args.directory.resolve()
-        )
+        from check_playback import check as check_playback
+
+        {
+            "capture": capture_run,
+            "reference": reference_run,
+            "verify": verify,
+            "playback": check_playback,
+        }[args.mode](args.directory.resolve())

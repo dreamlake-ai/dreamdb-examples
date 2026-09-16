@@ -1,7 +1,7 @@
 # Implementation and acceptance plan
 
-Status: design, storage slice and bounded real capture completed. Playback and
-training remain pending. Changes are tracked in examples issue #2.
+Status: design, storage, bounded real capture and headless playback completed.
+Training/performance remain pending. Changes are tracked in examples issue #2.
 
 ## Milestones
 
@@ -41,6 +41,11 @@ failure, propagate it to producer/close and do not publish a clean run-end marke
 No matrix of synthetic failures or tests of the checker's own machinery.
 
 ### P — Independent state playback
+
+Completed under Slurm: eleven selected poses and eleven EGL-rendered frames,
+including both end paths and subsequent reset. Pause/step/seek/timed advance and
+incomplete-prefix opt-in passed. Native desktop window/key delivery remains
+unverified; the viewer calls the checked control methods. See FINDINGS.md.
 
 Stop the capture process. A new process loads model/state from the pinned database
 snapshot and reads complete episodes from two environments plus a terminal/reset

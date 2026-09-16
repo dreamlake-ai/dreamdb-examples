@@ -1,6 +1,7 @@
 # mjlab / DreamDB reference prototype
 
-Status: **storage and bounded mjlab capture validated; playback and PPO integration pending**.
+Status: **storage, bounded mjlab capture and headless state playback validated;
+PPO integration and recording-overhead measurements pending**.
 Tracked in [issue #2](https://github.com/dreamlake-ai/dreamdb-examples/issues/2).
 
 This example has two purposes:
@@ -83,9 +84,9 @@ python -B -u check_capture.py
 
 This runs 32 Cartpole worlds for 11 control steps, including explicitly configured
 termination/time-out paths. Auto-reset capture, manual-reset reference and public
-SDK verification run in separate processes. It checks 464 events and then removes
-its generated dataset, reference trace and caches. No policy training or playback
-is implied. The reference is needed to observe pre-reset terminal state through
+SDK verification run in separate processes. It checks 464 events, then runs
+independent state playback and EGL rendering before removing its generated dataset,
+reference trace and caches. No policy training is implied. The reference observes pre-reset terminal state through
 the public environment boundary; it is not a second recorder-hook implementation.
 
 `DreamDBRecorder` uses the existing mjlab hooks. The owner attaches the writer,
@@ -98,4 +99,42 @@ work; the prototype does not claim zero-copy or asynchronous CUDA transfer.
 No production Ref, private dataset, credential, cluster endpoint or raw cluster
 log belongs in this example. Initial storage acceptance uses an isolated local
 filesystem backend. Cluster execution uses the user's scheduler; never training
-on its controller. Playback commands will be added in their milestone.
+on its controller.
+
+## State playback
+
+`playback.py` imports DreamDB, NumPy and MuJoCo, not mjlab or Torch. It opens a
+pinned Manifest, retrieves the saved MJB and only the selected episode's state
+columns, and restores qpos/qvel, mocap state and simulation time. It calls
+`mj_forward`, never `mj_step`: this is state playback, not action resimulation.
+
+For an existing recording with the capture metadata:
+
+```sh
+MUJOCO_GL=egl python playback.py render \
+  --backend file:///absolute/path/to/backend --manifest MANIFEST_HASH \
+  --env 0 --episode 0 --step 2 --output /new/path/frame.ppm
+
+# On a compatible Linux desktop with a display:
+python playback.py view \
+  --backend file:///absolute/path/to/backend --manifest MANIFEST_HASH \
+  --env 0 --episode 0
+```
+
+`--step -1` selects reset; nonnegative values select transition step IDs. A new
+PPM file is written exclusively (never overwritten). Space plays/pauses; Left/Right
+step; Home/End select first/last; digits 0–9 seek across the selected episode.
+Timing uses recorded simulation time, not ordinal database anchors. Incomplete
+episodes require `--allow-incomplete` and remain labeled incomplete.
+
+To retain the small acceptance capture for manual use, run
+`python check_capture.py capture /new/task/directory` **inside a GPU allocation**.
+It writes `backend/` and `receipt.json` containing the Manifest. Unlike the default
+`all` coordinator, this explicit mode keeps the recording; remove that task
+directory when finished. It is the bounded acceptance variation, not a trainer.
+
+MJB loading currently requires the same MuJoCo version, OS and architecture as
+capture. These guards do not promise universal asset portability. One selected
+episode and scalar-query anchor lists are held in memory; this is not a streaming
+viewer for arbitrary-scale recordings. Headless acceptance covers restore/render
+and the control methods, not a native desktop window or keyboard delivery.

@@ -130,8 +130,51 @@ comparisons remain milestone T; no network or cluster-scale result is inferred.
 
 No core defect was demonstrated. The actual actor-observation capture is checked
 for this fixed action driver; PPO normalization/wrapper integration is not yet
-validated. Full playback, renderer state restoration and PPO training remain
-pending. Raw traces, models and large logs are not archived in this repository.
+validated. Playback was subsequently checked below; PPO training remains pending.
+Raw traces, models and large logs are not archived in this repository.
+
+## Independent state playback
+
+The subsequent Slurm run completed in 35 seconds, exit 0, on the same GPU/runtime
+envelope. This includes writer checks, capture, independent manual-reset reference,
+database verification and a fourth process for playback; it is not playback-only
+latency or a performance comparison. No mjlab/Torch import is needed by the player.
+
+Primary claim: the selected episode can be reconstructed and rendered after the
+producer exits, using only its database-persisted model and primary state. The
+reachable failure is missing/wrong assets or state producing a different pose.
+The minimum evidence is the separate-process restore and real EGL rendering;
+no additional validator/mutation framework was added.
+
+| Check | Result |
+| --- | --- |
+| Capture repeated with playback metadata | 464 events; independent reference maximum array difference 0.0 |
+| Pinned database model | MJB loaded from run-start typed array; digest/length and MuJoCo/platform checked |
+| Primary state | qpos/qvel and mocap position/quaternion exactly matched stored f32 values after restoration |
+| Selected pose reference | 11 samples from two environments, complete first episodes, termination/time-out and subsequent reset; maximum body xpos/xmat difference 0.0 (rtol=1e-5, atol=1e-6) |
+| Actual renderer | 11 nonuniform 320x240 RGB frames, all with different hashes; no cross-driver pixel-equality claim |
+| Controls | Pause, backward step, step-ID seek, simulation-time advance and end pause passed through the same methods used by the viewer |
+| Incomplete tail | Refused by default; explicitly allowed and still labeled incomplete |
+| Native desktop window/key delivery | Not tested on the headless node |
+
+The reference computes kinematics from the independent simulation's original
+model and primary state. It does not compare stale GPU-derived xpos, which can
+lag integration, and does not mutate the simulation to refresh it. The player
+independently loads the database model/state and calls mj_forward, never mj_step.
+This checks stored-state reconstruction, not MuJoCo's kinematics implementation
+or deterministic action resimulation.
+
+An initial job stopped before simulation because the task staging omitted
+`check_storage.py`, imported by the writer check. Copying that existing dependency
+fixed the staging error; the next job passed. This was not a product defect and
+did not require another validation layer.
+
+Local storage round-trip, writer pressure/death checks, CLI help, Ruff and shell
+syntax also passed. Native viewer integration, large-episode memory/query cost,
+PPO behavior and off/on overhead remain outside this result. No DreamDB-core
+change or defect was established. Generated databases, reference poses, frames
+and per-job compilation caches were temporary; retain only code and these concise
+results, not raw traces or model assets.
 
 ## How to report an actual finding
 

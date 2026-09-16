@@ -1,7 +1,7 @@
 # Application contract: parallel recording and state playback
 
-Status: v0 application contract; storage and capture implemented, playback
-pending. This is not a DreamDB protocol specification. Requirements for unfinished
+Status: v0 application contract; storage, capture and headless playback validated.
+This is not a DreamDB protocol specification. Requirements for unfinished
 milestones remain acceptance targets, not claims that they already work.
 
 ## 1. Ownership and supported envelope

@@ -20,6 +20,13 @@ Run plan written before submission; completed results are in FINDINGS.md.
 - One 128 KiB shared CPU slot, batches of at most 64 event rows. Explicit
   synchronous GPU-to-host snapshots; slot reused only after publication ack.
 - No S3/production data, policy training, cluster configuration changes or worker SSH.
+- Playback milestone uses the same bounded workload in one further Slurm run.
+  After capture exits, an independent process loads MJB and projected state only
+  from DreamDB, compares restored state and derived body poses against eleven
+  manual-reset reference samples (two worlds, terminal/time-out and next reset),
+  and renders 320x240 EGL frames. It exercises pause/step/seek/timed advance and
+  incomplete-prefix opt-in through the same methods as the viewer. No native
+  desktop window/key-delivery or cross-platform MJB compatibility claim.
 - Generated database, reference trace and compilation caches go under the
   coordinator's temporary directory and are removed on normal completion/failure.
   Scheduler timeout/kill cleanup must be checked explicitly if one occurs.

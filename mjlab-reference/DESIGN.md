@@ -2,7 +2,7 @@
 
 ## 1. Small structure, not a framework
 
-Modules (storage and capture implemented; playback pending):
+Modules (storage, capture and playback implemented; training integration pending):
 
 | Module | Responsibility |
 | --- | --- |
@@ -10,7 +10,10 @@ Modules (storage and capture implemented; playback pending):
 | `store.py` | Schema, synchronous writer primitive and public SDK reads |
 | `writer.py` | Spawned writer and fixed shared-memory transport slots |
 | `playback.py` | Open pinned snapshot, select episode, restore saved state, render |
-| `run.py` | Small CLI for capture, inspection, playback and performance comparison |
+| `check_capture.py` | Bounded capture/reference/read/playback coordinator; not a trainer |
+
+Playback has its own small CLI. Training/performance commands remain milestone T;
+there is no general-purpose runner abstraction.
 
 No service, REST API, plugin loader, abstract storage backend hierarchy, package
 release train or independent application lifecycle. Keep task-specific code
@@ -115,9 +118,18 @@ and expose incomplete episodes as such. Load only required state columns.
 
 Use saved simulation time for frame timing. Seek by episode step using public
 query results; restore qpos/qvel (and supported additional state), call MuJoCo
-forward, then render. Export a short video or use a local MuJoCo viewer; neither
+forward, then render. Export a PPM frame or use a local MuJoCo viewer; neither
 requires a web application. Headless frame rendering is the scheduler acceptance
 boundary, while pause/step/seek can run on a desktop with the same stored data.
+
+The implemented player retains one selected episode in memory, uses recorded
+simulation-time deltas, and requires explicit opt-in for incomplete prefixes.
+MJB compatibility is deliberately guarded by exact MuJoCo version and OS/CPU
+architecture; cross-platform loading is not inferred from a successful decode.
+The body-pose reference uses primary state from the independent manual-reset run
+and its original model, recomputing kinematics because GPU-derived poses can lag.
+The player uses only the database-loaded model/state. This checks reconstruction,
+not the correctness of MuJoCo's forward-kinematics implementation itself.
 
 ## 5. Explicit limitations and feedback
 
