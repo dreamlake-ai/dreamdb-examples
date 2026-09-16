@@ -265,6 +265,10 @@ must not be presented as total GPU memory. Separate RSS peaks are not simultaneo
 
 ### Product feedback / limit
 
+Tracked as [dreamdb-core #381](https://github.com/dreamlake-ai/dreamdb-core/issues/381)
+with `performance` and `priority-medium` labels, pinned reproduction and the
+measurement boundary. It is not marked as a proven correctness bug.
+
 The lossless public API works, but this per-event mapping with default unbucketed
 small typed arrays and frequent scalar/Track publications is **not a recommended
 large-scale robot-RL recorder**. The measured append path dominates while CPU
