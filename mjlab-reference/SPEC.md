@@ -1,8 +1,8 @@
 # Application contract: parallel recording and state playback
 
-Status: v0 design draft, preceding implementation. This is an **application
-contract**, not a DreamDB protocol specification. Normative requirements below
-are acceptance targets, not claims that unimplemented behavior already works.
+Status: v0 application contract; storage slice implemented, capture/playback
+pending. This is not a DreamDB protocol specification. Requirements for unfinished
+milestones remain acceptance targets, not claims that they already work.
 
 ## 1. Ownership and supported envelope
 
@@ -97,9 +97,11 @@ actuator state or mocap values if present; initially require zero dimensions for
 unsupported state families. Physical state is not a similarity embedding.
 
 Store the compiled model and metadata through DreamDB, not a training-machine
-path. V0 may use a base64-encoded MuJoCo MJB in the metadata scalar string, with
-digest and byte length. This is deliberately small-example storage, not a
-general large-asset encoding. Pin MuJoCo version/platform compatibility, joint
+path. V0 uses a `u8` typed array containing the MuJoCo MJB in the run-start row,
+with digest and byte length in metadata. State/observation/action fields use
+fixed-shape `f32` typed arrays, little-endian, C layout, raw codec. No base64,
+compressed embeddings or custom array decoding is necessary: the released Python
+SDK has a public typed-array API. Pin MuJoCo version/platform compatibility, joint
 order, dimensions, task configuration, library versions and example revision.
 Verify the saved model loads in the independent playback process. No model
 parameter changes after the captured model are supported in v0.

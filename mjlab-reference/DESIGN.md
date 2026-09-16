@@ -2,12 +2,12 @@
 
 ## 1. Small structure, not a framework
 
-Planned modules (not yet implemented):
+Modules (only the storage slice is implemented):
 
 | Module | Responsibility |
 | --- | --- |
 | `capture.py` | Cartpole setup, mjlab RecorderTerm hooks, episode bookkeeping |
-| `store.py` | Schema, fixed-size capture batches, single writer process, public SDK reads |
+| `store.py` | Schema, synchronous writer primitive and public SDK reads (implemented); capture queue/process follows |
 | `playback.py` | Open pinned snapshot, select episode, restore saved state, render |
 | `run.py` | Small CLI for capture, inspection, playback and performance comparison |
 
@@ -18,24 +18,25 @@ visibly task-specific. Dependencies belong to this example alone.
 ## 2. First DreamDB mapping
 
 One fresh Ref/dataset per run; one row per event. The metadata lives in the same
-dataset, avoiding an implied cross-Ref transaction. Use ordinary scalar fields:
+dataset, avoiding an implied cross-Ref transaction. Use public scalar and array fields:
 
 | Group | Representation |
 | --- | --- |
 | Identity | integer env/episode/step/sim_step, categorical row kind |
-| Physical state | named scalar float components of qpos/qvel and simulation time |
-| Transition | scalar observation/action components, reward, boolean flags |
-| Optional next observation | validity flag plus components only where present |
-| Run metadata | scalar string containing versioned JSON and small model payload |
+| Physical state | fixed-shape f32 qpos/qvel arrays; scalar simulation time |
+| Transition | fixed-shape f32 observation/action arrays; scalar reward and boolean flags |
+| Optional next observation | validity flag plus f32 array only where present |
+| Run metadata | scalar string containing versioned JSON; u8 array containing the compiled model |
 
-For Cartpole, scalar components keep exact values and public queryability without
-misusing compressed embeddings or image fields for arbitrary tensors. Float32
-values can be represented exactly by float64 scalar values; readback still
-checks the actual round trip. Dimensions/order are explicit metadata. This
-layout may be unsuitable for high-dimensional observations: measure bytes and
-object counts before recommending it elsewhere. A missing efficient generic
-tensor/record representation would be a DreamDB finding, not something to hide
-behind a custom database inside a payload.
+The first draft proposed component scalars and base64 model encoding; runtime
+inspection of the released SDK showed this was unnecessary. `Schema.add_array`
+already supplies dtype/shape and lossless raw encoding. Milestone S demonstrates
+the public ndarray round trip, including signed zero. We use this existing
+capability rather than claiming a missing tensor API or building our own codec.
+Array dimensions/order are explicit metadata. This does not establish efficient
+large-scale tensor storage: defaults are event/unbucketed; measure object counts,
+publication amplification and throughput in the real workload before recommending
+the layout at scale.
 
 Metadata-only rows must not cause unrelated columns to be filled with invented
 state; make fields optional where appropriate. `run_start` precedes event rows;
@@ -51,12 +52,16 @@ the Python source exposes scalar schema builders, `append_many`, `commit`,
 range, and `iter_scalar` with equality predicates. These are source observations,
 not an assertion that an arbitrary installed wheel matches that revision.
 
-The implementation must pin and exercise its actual wheel. In particular,
+Milestone S pins and exercises the released `dreamdb==0.0.13` wheel; it does not
+infer a wheel-to-source-revision mapping from the checkpoint above. In particular,
 `iter_scalar` at this revision lacks a `fields` parameter, while range readers
 have one. Evaluate a public-API composition (identity query then projected
 windows) and report its cost; do not call private readers to conceal an API gap.
-For the small first workload, bounded ranges and explicit projection are enough
-to test feasibility; large-dataset scaling remains unproved.
+The implemented composition intersects `query_scalar` anchor results for env and
+episode, groups them into fixed 256-ordinal windows, then calls `iter_all_batches`
+with projection and filters those rows by selected anchors. This passed the small
+workload. Anchor result lists are materialized and windows can include other envs;
+large-dataset scaling and query efficiency remain unproved.
 
 ## 3. Capture and bounded writing
 
@@ -106,7 +111,7 @@ boundary, while pause/step/seek can run on a desktop with the same stored data.
   terrain/assets. Random reset states remain supported by recording actual state.
 - Logical ordinal anchors make ordering unambiguous but require explicit simulation
   time; evaluate this ergonomics tradeoff as a database user.
-- Component scalars favor clarity over compact high-dimensional tensor storage.
+- Lossless typed arrays work, but their small-item/unbucketed cost is not yet measured.
 - Filesystem performance is not S3/network performance. Do not extrapolate.
 - Appended data and a database commit do not resume a policy optimizer or RNG state.
 

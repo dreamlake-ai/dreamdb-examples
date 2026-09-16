@@ -44,9 +44,43 @@ Scalar equality iteration and projected range iteration are exposed separately;
 consumer needs episode selection plus a small state projection. Milestone S will
 exercise public composition and record its cost before proposing any change.
 
-No DreamDB defect has yet been established by this prototype. No application
-round-trip, asset portability, training integration or recording performance
-claim is marked passed.
+## Storage slice — released SDK, independent processes
+
+Local execution: Python 3.12.13 on macOS arm64, `dreamdb==0.0.13`,
+`mujoco==3.11.0`, `numpy==2.5.3`, isolated environment, file backend. The coordinator
+waited for writer exit before launching the reader. Source: `check_storage.py`.
+
+| Primary check | Observed result |
+| --- | --- |
+| Interleaved data survives independent reopen | 11/11 event rows exact, including identities, flags, sparse field absence and scalar float bits |
+| Typed arrays retain physical values | All dtype/shape/byte comparisons passed, including float32 negative zero |
+| Episode classification | Three complete; a continuing episode and reset-only episode remain incomplete despite clean run_end |
+| Projected episode retrieval | Public scalar lookup + bounded projected windows returned exactly the selected qpos values, with no other field materialization in the returned batches |
+| Snapshot pinning | Earlier published prefix retained four original events, no clean run_end, incomplete episode, despite subsequent publication |
+| Saved model is usable outside producer | 4,588 bytes recovered from a u8 array, length/hash matched, loaded as a 2-DOF MJB in the reader |
+
+The complete event read took 14.057 ms in the first execution. This is one tiny
+local run, not a throughput benchmark, network measurement or scaling claim.
+Only same-platform/same-MuJoCo-version asset loading is established. Synthetic
+records test storage, not actual mjlab callback timing. No renderer was used.
+The prior prefix check is not a crashed-writer test; failure propagation belongs
+to the bounded-writer milestone. All generated storage was removed automatically.
+
+### Design correction, not a DreamDB gap
+
+The draft overlooked the released `Schema.add_array`/ndarray read support and
+proposed scalar components/base64. Runtime API inspection and the round trip
+confirmed exact f32/u8 arrays are already supported. The implementation and
+contract now use them; no engine change or new core issue is justified here.
+
+The projected scalar-filter composition works for this small input. It does
+materialize two anchor lists and can fetch neighboring env records in each
+bounded window. Whether a combined filtered/projection API materially improves
+this workload remains a measurement question, not an established engine defect.
+
+No DreamDB defect has yet been established. Real capture, full playback, training
+integration, bounded-writer failure behavior and recording performance remain
+unverified. This is a local example check, not a formal testbox verdict for core.
 
 ## How to report an actual finding
 

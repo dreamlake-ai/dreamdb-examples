@@ -1,0 +1,4 @@
+# Storage milestone only; no mjlab, Torch, renderer or training dependency.
+dreamdb==0.0.13
+mujoco==3.11.0
+numpy==2.5.3

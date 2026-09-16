@@ -1,7 +1,7 @@
 # Implementation and acceptance plan
 
-Status: design milestone only. No capture, playback or training implementation
-has been accepted. Changes are tracked in examples issue #2.
+Status: design and local storage-slice milestones completed. Capture, playback
+and training remain pending. Changes are tracked in examples issue #2.
 
 ## Milestones
 
@@ -11,12 +11,13 @@ has been accepted. Changes are tracked in examples issue #2.
 - [x] Application contract and reference design.
 - [x] Installed mjlab hook semantics and native Cartpole termination checked.
 - [x] Public DreamDB API source checkpoints and known limitations documented.
-- [ ] Runtime SDK pin and concrete run configuration, selected in milestone S.
+- [x] Storage runtime pins: dreamdb 0.0.13, MuJoCo 3.11.0, NumPy 2.5.3.
 
 ### S — Storage slice, before GPU integration
 
+Completed locally via `check_storage.py` (details in FINDINGS.md).
 Pin a released SDK or an explicitly built core revision in an isolated environment.
-Write a small two-environment trace using actual scalar fields, publish, close
+Write a small two-environment trace using actual scalar and typed-array fields, publish, close
 the writer, and reopen by Manifest from a separate process. Check all identity,
 flags and numerical values, model bytes and projected episode reads. Include an
 incomplete tail and ensure it is not labeled complete. This validates the generic
