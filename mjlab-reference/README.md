@@ -1,7 +1,8 @@
 # mjlab / DreamDB reference prototype
 
-Status: **storage, bounded mjlab capture and headless state playback validated;
-PPO integration and recording-overhead measurements pending**.
+Status: **bounded capture, independent playback and real PPO integration validated**.
+Recording overhead is measured and remains too high for a large-scale training
+recommendation. This is a reference design, not a production-ready training recorder.
 Tracked in [issue #2](https://github.com/dreamlake-ai/dreamdb-examples/issues/2).
 
 This example has two purposes:
@@ -21,6 +22,7 @@ Read in order:
 - [Design](DESIGN.md): how the prototype maps that contract onto public APIs.
 - [Implementation plan](PLAN.md): bounded milestones and acceptance.
 - [Findings](FINDINGS.md): source observations, measurements and product feedback.
+- [Adapting the pattern](ADAPTING.md): what another application should reuse/change.
 
 The first target is mjlab's built-in `Mjlab-Cartpole-Balance`, one GPU and a
 small number of parallel worlds. Cartpole is a minimal integration workload,
@@ -138,3 +140,41 @@ capture. These guards do not promise universal asset portability. One selected
 episode and scalar-query anchor lists are held in memory; this is not a streaming
 viewer for arbitrary-scale recordings. Headless acceptance covers restore/render
 and the control methods, not a native desktop window or keyboard delivery.
+
+## Actual PPO and recording cost
+
+`training.py` is a small RSL-RL environment wrapper, not a trainer fork. Attach
+the writer before constructing the wrapper (its constructor resets the env),
+then hand the wrapper to the normal runner. It caches the returned actor group
+and records it with the next action before stepping. The checked envelope has
+observation normalization and wrapper action clipping disabled; the actor input
+is not an unspecified normalized latent, and action is not actuator force.
+
+The pinned GPU environment additionally uses `rsl-rl-lib==5.4.2`. Within a Slurm
+allocation, or via [training.slurm](training.slurm):
+
+```sh
+# Original small-publication baseline:
+python -B -u check_training.py --batch-rows 64
+# One measured batching improvement, including PPO/readback acceptance:
+python -B -u check_training.py --batch-rows 512
+```
+
+See [TRAINING-RUN.md](TRAINING-RUN.md) for bounds and measurement definitions.
+Each command performs three warm, alternating fixed-action off/on pairs, then
+two real PPO updates and a separate-process database/rollout comparison. It
+cleans its generated data and caches. No external logger or checkpoint upload.
+
+The training adapter defaults to 512-row publications after the bounded comparison;
+the benchmark defaults to 64 to preserve the original baseline. Two transport
+slots remain bounded (2 MiB total with 512-row batches). More rows can be buffered
+before publication: lower publication frequency is a latency/durability-prefix
+tradeoff, not free throughput. The synchronous writer and previous capture smoke
+keep their original defaults.
+
+Measured fixed-schedule median including drain: **11.62 s → 5.28 s**, versus
+approximately **0.036 s without recording**, for only 512 environment steps.
+The faster loop alone hides the final drain; do not report it as sustained
+low-overhead training. PPO's 512 stored actor inputs/actions/done flags matched
+the trainer's own rollout arrays exactly for both batch sizes. This establishes
+integration, not convergence, scale, crash recovery or restartable training.

@@ -20,17 +20,28 @@ from store import LocalRunWriter
 def _write(root, metadata, model, arena, slot_bytes, conn):
     try:
         writer = LocalRunWriter(Path(root), metadata, model)
+        append_seconds = 0.0
+        batches = 0
         conn.send(("ready", writer.dataset.current_manifest()))
         while True:
             command = conn.recv()
             if command[0] == "finish":
-                conn.send(("finished", writer.finish()))
+                conn.send(
+                    (
+                        "finished",
+                        writer.finish(),
+                        {"append_seconds": append_seconds, "batches": batches},
+                    )
+                )
                 return
             _, slot, size = command
             start = slot * slot_bytes
             payload = bytes(memoryview(arena).cast("B")[start : start + size])
             events = pickle.loads(payload)
+            started = time.perf_counter()
             tip = writer.append(events)
+            append_seconds += time.perf_counter() - started
+            batches += 1
             del events, payload
             conn.send(("ack", slot, tip))
     except BaseException as exc:
@@ -148,13 +159,14 @@ class BoundedWriter:
         try:
             self.drain()
             self._conn.send(("finish",))
-            kind, tip = self._receive()
+            kind, tip, metrics = self._receive()
             if kind != "finished":
                 raise RuntimeError("missing writer completion")
             self._process.join(timeout=10)
             if self._process.exitcode != 0:
                 raise RuntimeError("writer did not exit cleanly")
             self.tip = tip
+            self.stats.update(metrics)
             self._closed = True
             self._conn.close()
             return tip

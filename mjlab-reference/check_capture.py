@@ -32,7 +32,7 @@ def acceptance_termination(env):
     return (torch.arange(env.num_envs, device=env.device) % 2 == 0) & (env.episode_length_buf >= 3)
 
 
-def make_env(auto_reset):
+def make_env(auto_reset, *, record=None):
     import warp as wp
 
     if cache := os.environ.get("MJLAB_REFERENCE_CACHE"):
@@ -51,7 +51,9 @@ def make_env(auto_reset):
     cfg.terminations["acceptance_even_env_length3"] = TerminationTermCfg(
         func=acceptance_termination
     )
-    if auto_reset:
+    if record is None:
+        record = auto_reset
+    if record:
         from capture import DreamDBRecorder
         from mjlab.managers.recorder_manager import RecorderTermCfg
 

@@ -1,7 +1,8 @@
 # Implementation and acceptance plan
 
-Status: design, storage, bounded real capture and headless playback completed.
-Training/performance remain pending. Changes are tracked in examples issue #2.
+Status: bounded D/S/C/P/T milestones completed; reference handoff and measured
+performance limitation documented. Changes are tracked in examples issue #2.
+This does not establish production-scale suitability or close core follow-up work.
 
 ## Milestones
 
@@ -56,6 +57,12 @@ the same state-loading functions. No pixel-identical cross-driver requirement.
 
 ### T — Training integration and performance
 
+Completed on Slurm with RSL-RL 5.4.2: two real PPO updates, 512 exact transition
+comparisons against trainer rollout arrays, and three paired fixed-action runs
+at each of 64/512 rows per publication. One batching improvement gave about 2.2x
+with-drain speedup, but recording remains expensive. See FINDINGS.md; stop tuning
+this prototype rather than claim the remaining bottleneck is solved.
+
 Run a short actual Cartpole PPO session with the recorder; do not call random
 action capture a training test. Confirm the recorder observes the policy input,
 terminal handling and batched env step without changing the trainer's rollout
@@ -75,6 +82,11 @@ there is material benefit or a correctness problem. Document unexpected costs
 even when they make the chosen mapping look bad.
 
 ### F — Product feedback and handoff
+
+Reference handoff: README, ADAPTING.md and FINDINGS.md describe the implementation,
+public API composition, measured cost, reproduction and limitations. Core feedback
+is a performance investigation, not a demonstrated corruption bug or an RL feature
+request. Native desktop interaction and production scale remain unverified.
 
 Each demonstrated DreamDB issue gets a minimal reproducer and a linked core
 issue/PR where appropriate. Keep RL-specific changes here. Rerun the same failing

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import time
+from functools import wraps
+
 import numpy as np
 import torch
 from mjlab.managers.recorder_manager import RecorderTerm
@@ -10,6 +13,18 @@ from mjlab.managers.recorder_manager import RecorderTerm
 def host(tensor):
     # Deliberately synchronous baseline. Own values before reset/next step mutation.
     return tensor.detach().cpu().numpy().copy()
+
+
+def timed_capture(method):
+    @wraps(method)
+    def call(self, *args, **kwargs):
+        start = time.perf_counter()
+        try:
+            return method(self, *args, **kwargs)
+        finally:
+            self.capture_seconds += time.perf_counter() - start
+
+    return call
 
 
 class DreamDBRecorder(RecorderTerm):
@@ -23,16 +38,25 @@ class DreamDBRecorder(RecorderTerm):
         self.sim_step = 0
         self.before = None
         self.actions = None
+        self.capture_seconds = 0.0  # Inclusive callbacks: copy, packing and queue wait.
+        self.copy_seconds = 0.0
+
+    def _host(self, tensor):
+        start = time.perf_counter()
+        value = host(tensor)
+        self.copy_seconds += time.perf_counter() - start
+        return value
 
     def attach(self, writer, batch_rows=64):
         self.writer = writer
         self.batch_rows = batch_rows
 
+    @timed_capture
     def begin_step(self, observation, action):
         if self.writer is None or self.before is not None:
             raise RuntimeError("attach writer and complete previous step first")
-        self.before = host(observation)
-        self.actions = host(action)
+        self.before = self._host(observation)
+        self.actions = self._host(action)
         self.sim_step += 1
 
     def _emit(self, row):
@@ -49,20 +73,23 @@ class DreamDBRecorder(RecorderTerm):
         mocap = {}
         if self._env.sim.mj_model.nmocap:
             for name in ["mocap_pos", "mocap_quat"]:
-                mocap[name] = host(getattr(self._env.sim.data, name)[ids]).reshape(len(ids), -1)
+                mocap[name] = self._host(getattr(self._env.sim.data, name)[ids]).reshape(
+                    len(ids), -1
+                )
         return (
-            host(self._env.sim.data.qpos[ids]),
-            host(self._env.sim.data.qvel[ids]),
-            host(self._env.sim.data.time[ids]).reshape(-1),
+            self._host(self._env.sim.data.qpos[ids]),
+            self._host(self._env.sim.data.qvel[ids]),
+            self._host(self._env.sim.data.time[ids]).reshape(-1),
             mocap,
         )
 
+    @timed_capture
     def record_post_reset(self, env_ids):
         if self.writer is None:
             raise RuntimeError("reset called before recorder writer attached")
-        ids = host(env_ids).tolist()
+        ids = self._host(env_ids).tolist()
         pos, vel, times, mocap = self._state(env_ids)
-        obs = host(self._env.obs_buf["actor"][env_ids])
+        obs = self._host(self._env.obs_buf["actor"][env_ids])
         for i, env in enumerate(ids):
             self.episodes[env] += 1
             self.steps[env] = 0
@@ -84,14 +111,14 @@ class DreamDBRecorder(RecorderTerm):
     def _transitions(self, env_ids, terminal):
         if self.before is None:
             raise RuntimeError("call begin_step with the actual policy input/action")
-        ids = host(env_ids).tolist()
+        ids = self._host(env_ids).tolist()
         if not ids:
             return
         pos, vel, times, mocap = self._state(env_ids)
-        rewards = host(self._env.reward_buf[env_ids])
-        terminated = host(self._env.reset_terminated[env_ids])
-        truncated = host(self._env.reset_time_outs[env_ids])
-        after = None if terminal else host(self._env.obs_buf["actor"][env_ids])
+        rewards = self._host(self._env.reward_buf[env_ids])
+        terminated = self._host(self._env.reset_terminated[env_ids])
+        truncated = self._host(self._env.reset_time_outs[env_ids])
+        after = None if terminal else self._host(self._env.obs_buf["actor"][env_ids])
         for i, env in enumerate(ids):
             row = {
                 "kind": "transition",
@@ -115,9 +142,11 @@ class DreamDBRecorder(RecorderTerm):
             self._emit(row)
             self.steps[env] += 1
 
+    @timed_capture
     def record_pre_reset(self, env_ids):
         self._transitions(env_ids, terminal=True)
 
+    @timed_capture
     def record_post_step(self):
         ids = torch.nonzero(~self._env.reset_buf, as_tuple=False).flatten()
         self._transitions(ids, terminal=False)

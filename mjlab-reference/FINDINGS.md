@@ -130,7 +130,7 @@ comparisons remain milestone T; no network or cluster-scale result is inferred.
 
 No core defect was demonstrated. The actual actor-observation capture is checked
 for this fixed action driver; PPO normalization/wrapper integration is not yet
-validated. Playback was subsequently checked below; PPO training remains pending.
+validated by that capture run. Playback and actual PPO were subsequently checked below.
 Raw traces, models and large logs are not archived in this repository.
 
 ## Independent state playback
@@ -175,6 +175,114 @@ PPO behavior and off/on overhead remain outside this result. No DreamDB-core
 change or defect was established. Generated databases, reference poses, frames
 and per-job compilation caches were temporary; retain only code and these concise
 results, not raw traces or model assets.
+
+## Real PPO and bounded recording-cost experiment
+
+RSL-RL 5.4.2, same mjlab/Torch/MuJoCo environment above. Two Slurm jobs completed
+with exit 0 (77 s baseline and 51 s larger-batch experiment), including cold startup,
+all comparison runs and independent verification. No external logging/checkpoint
+upload. An initial submission was rejected because staging had not finished;
+waiting for the copy and resubmitting fixed this orchestration error before any job.
+
+### Actual training integration
+
+The normal MjlabOnPolicyRunner/PPO performed two updates, eight steps each across
+32 worlds, with 32x32 actor/critic MLPs and two epochs/two minibatches. The original
+optimizer and rollout implementation were not modified. Actor parameters changed
+and remained finite; this is not a convergence result.
+
+The checker reads the actual rollout's observations/actions/done arrays after
+each update. RSL-RL 5.4.2 `RolloutStorage.clear()` only resets its cursor, leaving
+those values available; the checker does not mutate storage. After producer exit,
+an independent DreamDB reader compared all **512 transitions exactly**, including
+step/environment identities. There were 144 complete episodes and 32 incomplete
+tails, with both termination and time-out reached. Both batch sizes passed.
+
+| PPO recording | Learn calls (s) | Final flush/drain (s) | Sum (s) | Rows / append publications |
+| --- | ---: | ---: | ---: | ---: |
+| 64 rows/batch | 5.1734 | 6.6863 | 11.8597 | 688 / 11 |
+| 512 rows/batch | 0.2343 | 5.3130 | 5.5473 | 688 / 2 |
+
+These are separate short runs, not a PPO on/off comparison. Setup, witness-array
+copies between learn calls and subsequent verification are excluded from the sum.
+Model observation normalization and wrapper action clipping are disabled. Recorded
+reward remains environment reward, not PPO's time-out-bootstrapped reward. The
+adapter caches the actor group returned to the runner before its next step.
+
+### Fixed-action performance, including drain
+
+One full unrecorded warm-up per process, then three pairs in off/on, on/off,
+off/on order. Each run resets 32 worlds at seed 71 and executes the same 16-step
+schedule: 512 environment steps, 688 recorded events, 25.6 aggregate simulated
+environment-seconds. Both modes auto-reset. Startup/model/header are outside the
+timed reset+loop+drain; setup was 0.022–0.036 s off and 0.122–0.129 s on.
+
+| Batch rows | Pair | Off, with drain (s) | On loop only (s) | On, with drain (s) |
+| ---: | ---: | ---: | ---: | ---: |
+| 64 | 1 | 0.036129 | 4.949041 | 11.592853 |
+| 64 | 2 | 0.035697 | 5.202507 | 12.277567 |
+| 64 | 3 | 0.035582 | 4.928214 | 11.621968 |
+| 512 | 1 | 0.046186 | 0.046144 | 5.268609 |
+| 512 | 2 | 0.035872 | 0.047386 | 5.362855 |
+| 512 | 3 | 0.035852 | 0.046720 | 5.276203 |
+
+The one change was publication batching, 64 → 512 rows (two transport slots
+remain; total arena 256 KiB → 2 MiB). Median recording+drain improved **2.20x**,
+11.62 → 5.28 s. No values were omitted. More rows can remain buffered before
+acknowledgment. The optimized two slots fit this entire small burst: zero queue
+wait does **not** establish sustained low-overhead recording. Most work moves to
+final drain. No further tuning sweep was run.
+
+| Fixed-schedule measurement | 64 rows/batch | 512 rows/batch |
+| --- | ---: | ---: |
+| Environment steps/s, including drain | 41.70–44.17 | 95.47–97.18 |
+| Child append/commit time, s | 11.564–12.224 | 5.215–5.308 |
+| Submitted rows / append second | 56.28–59.49 | 129.63–131.93 |
+| Inclusive capture callbacks, s | 4.889–5.164 | 0.00918–0.00942 |
+| Synchronous host-copy time, s | 0.00304–0.00316 | 0.00291–0.00299 |
+| Queue waits / seconds (including final submit) | 9 / 6.860–7.259 | 0 / 0 |
+| Encoded in-flight high-water, bytes | 40,194 | 215,682 |
+| Backend files, including metadata/history | 6,764 | 6,386 |
+| Backend bytes | 2,979,806 | 1,151,640 |
+| Files / simulated environment-second | 264.22 | 249.45 |
+| Bytes / simulated environment-second | 116,399 | 44,986 |
+| Backend bytes / measured wall second | 242,703–257,038 | 214,744–218,585 |
+
+Capture callbacks include their copy/packing/queue waits; the categories overlap
+and must not be summed. Final flush is outside callback time. Child append timing
+includes normalization/validation and SDK append+commit, not just disk I/O. Backend
+bytes count all generated files including metadata/history; this is not useful
+payload throughput or a count of unique protocol objects. We did not profile
+the internals enough to attribute all the cost to a particular syscall/connector.
+
+Producer sampled RSS across fixed runs was 2.15–2.18 GB; writer peak samples were
+48.1–48.7 MB at 64 rows, 50.7–50.9 MB at 512 rows. These are decimal bytes rounded,
+sampled every 50 ms, not exact peaks; producer caches persist between pairs. PPO
+producer samples reached 2.41–2.42 GB. Torch peak allocated/reserved during PPO
+was 18,369,536 / 25,165,824 bytes; fixed runs used at most 134,656 allocated and
+4,194,304 reserved. Torch counters exclude Warp/graphics/driver allocations and
+must not be presented as total GPU memory. Separate RSS peaks are not simultaneous.
+
+### Product feedback / limit
+
+The lossless public API works, but this per-event mapping with default unbucketed
+small typed arrays and frequent scalar/Track publications is **not a recommended
+large-scale robot-RL recorder**. The measured append path dominates while CPU
+copies are negligible in this small workload. Larger publication batches help,
+yet thousands of backend files and approximately five seconds of drain remain
+for less than a second of per-environment simulation.
+
+This is a reproducible generic storage/API performance investigation, not proof
+of a corruption bug or proof that every supported array layout is slow. No hot
+path bypass, custom database format, training semantics in core, sampling away
+events or speculative connector patch was introduced. Next investigation should
+identify a supported efficient small-array/scalar ingestion layout and profile
+the original append workload, preserving exact values, projected reads and bounded
+publication. Do not infer S3 or long-running/large-fleet behavior from these runs.
+
+Temporary datasets, rollout witnesses, JIT caches and task-private imports were
+removed after recording these results. The application staging race is recorded
+once; no staging-validator framework was added.
 
 ## How to report an actual finding
 

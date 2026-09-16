@@ -2,7 +2,7 @@
 
 ## 1. Small structure, not a framework
 
-Modules (storage, capture and playback implemented; training integration pending):
+Modules (bounded reference implementation, not a framework):
 
 | Module | Responsibility |
 | --- | --- |
@@ -11,9 +11,10 @@ Modules (storage, capture and playback implemented; training integration pending
 | `writer.py` | Spawned writer and fixed shared-memory transport slots |
 | `playback.py` | Open pinned snapshot, select episode, restore saved state, render |
 | `check_capture.py` | Bounded capture/reference/read/playback coordinator; not a trainer |
+| `training.py` | Small RSL-RL wrapper; preserve actor input/action before stepping |
+| `check_training.py` | Actual PPO/rollout comparison and bounded off/on measurements |
 
-Playback has its own small CLI. Training/performance commands remain milestone T;
-there is no general-purpose runner abstraction.
+Playback has its own small CLI. There is no general-purpose runner abstraction.
 
 No service, REST API, plugin loader, abstract storage backend hierarchy, package
 release train or independent application lifecycle. Keep task-specific code
@@ -102,6 +103,21 @@ before its size-limit check, so this is not a general untrusted-input memory lim
 The producer polls acknowledgments with a deadline and detects writer death.
 `finish` drains before publishing run_end; `abort` stops only its own child and
 does not mark success. This is failure reporting, not crash recovery/retry.
+
+The training experiment compares 64-row with 512-row publications. The latter
+uses two 1 MiB slots and is the training adapter default; capture's earlier small
+smoke remains 64 rows. This changes batching, not event contents or public storage
+layout. It reduces publication history/metadata but still creates thousands of
+backend files for a short run. Total drain time, not loop-only time, is the relevant
+cost; no sustained-throughput claim follows from a burst fitting into two slots.
+
+RSL-RL integration wraps get_observations/step only, without modifying optimizer
+or rollout buffer. The bounded check disables action clipping and observation
+normalization and compares stored values with the actual trainer rollout arrays.
+Supporting either transform later requires naming which value is stored (raw
+input, normalized latent, unclipped action, applied action), not silently changing
+the meaning of the existing fields. PPO reward bootstrapping is likewise distinct
+from the environment reward that this recorder stores.
 
 The application budget counts filled slabs, queued/in-flight batches and any
 serialization copies it owns. It is not a bound on DreamDB/native connector
