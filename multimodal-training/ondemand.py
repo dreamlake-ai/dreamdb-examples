@@ -13,10 +13,10 @@ import numpy as np
 from data import Reader
 
 
-def batches(root, cache_bytes=0, page_cache_bytes=0):
+def batches(root, cache_bytes=0, page_cache_bytes=0, read_policy="pages"):
     receipt = json.loads((root / "receipt.json").read_text())
     reader = Reader((root / "backend").as_uri(), receipt, cache_bytes=cache_bytes,
-                    page_cache_bytes=page_cache_bytes)
+                    page_cache_bytes=page_cache_bytes, read_policy=read_policy)
     samples = [r for r in reader.samples if r[0][0] < 6]
     rng = np.random.default_rng(71)
     for _ in range(2):
@@ -37,9 +37,9 @@ def batches(root, cache_bytes=0, page_cache_bytes=0):
             yield raw, time.perf_counter() - started, measured
 
 
-def produce(root, queue, cache_bytes, page_cache_bytes):
+def produce(root, queue, cache_bytes, page_cache_bytes, read_policy):
     try:
-        for batch in batches(root, cache_bytes, page_cache_bytes):
+        for batch in batches(root, cache_bytes, page_cache_bytes, read_policy):
             queue.put(("batch", batch))
         queue.put(("done", resource.getrusage(resource.RUSAGE_SELF).ru_maxrss))
     except BaseException:
@@ -85,12 +85,13 @@ def train(root, mode):
                   returned_rows=0, payload_bytes=0, selected_records=0, selected_fetched_bytes=0,
                   worker_rss_kib=None, first_batch=None, max_batch_bytes=0)
     started = time.perf_counter()
-    if mode in ("prefetch", "cached", "pages"):
+    if mode in ("prefetch", "cached", "pages", "exact"):
         ctx = mp.get_context("spawn")
         queue = ctx.Queue(maxsize=2)
         worker = ctx.Process(target=produce, args=(root, queue,
                             1048576 if mode == "cached" else 0,
-                            1048576 if mode == "pages" else 0))
+                            1048576 if mode == "pages" else 0,
+                            "exact" if mode == "exact" else "pages"))
         worker.start()
     else:
         iterator = iter(batches(root))
@@ -168,7 +169,7 @@ def train(root, mode):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("mode", choices=["serial", "prefetch", "cached", "pages"])
+    parser.add_argument("mode", choices=["serial", "prefetch", "cached", "pages", "exact"])
     parser.add_argument("directory", type=Path)
     args = parser.parse_args()
     train(args.directory.resolve(), args.mode)
