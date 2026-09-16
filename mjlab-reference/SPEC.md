@@ -1,6 +1,6 @@
 # Application contract: parallel recording and state playback
 
-Status: v0 application contract; storage slice implemented, capture/playback
+Status: v0 application contract; storage and capture implemented, playback
 pending. This is not a DreamDB protocol specification. Requirements for unfinished
 milestones remain acceptance targets, not claims that they already work.
 
@@ -93,8 +93,11 @@ of scope for v0. Adding them requires explicit episode-end semantics first.
 
 For the chosen fixed-model task, persist all qpos/qvel components, simulation
 time and the observed/action values without lossy vector compression. Store
-actuator state or mocap values if present; initially require zero dimensions for
-unsupported state families. Physical state is not a similarity embedding.
+all mocap positions/quaternions if present, flattened in model body order
+(position xyz, quaternion wxyz). Reject nonzero actuator activation state until
+supported. The actual Cartpole scene has one mocap body: the initial zero-mocap
+assumption was rejected by execution and is not silently ignored. Physical state
+is not a similarity embedding.
 
 Store the compiled model and metadata through DreamDB, not a training-machine
 path. V0 uses a `u8` typed array containing the MuJoCo MJB in the run-start row,

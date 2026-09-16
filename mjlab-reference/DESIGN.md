@@ -2,12 +2,13 @@
 
 ## 1. Small structure, not a framework
 
-Modules (only the storage slice is implemented):
+Modules (storage and capture implemented; playback pending):
 
 | Module | Responsibility |
 | --- | --- |
 | `capture.py` | Cartpole setup, mjlab RecorderTerm hooks, episode bookkeeping |
-| `store.py` | Schema, synchronous writer primitive and public SDK reads (implemented); capture queue/process follows |
+| `store.py` | Schema, synchronous writer primitive and public SDK reads |
+| `writer.py` | Spawned writer and fixed shared-memory transport slots |
 | `playback.py` | Open pinned snapshot, select episode, restore saved state, render |
 | `run.py` | Small CLI for capture, inspection, playback and performance comparison |
 
@@ -24,6 +25,7 @@ dataset, avoiding an implied cross-Ref transaction. Use public scalar and array 
 | --- | --- |
 | Identity | integer env/episode/step/sim_step, categorical row kind |
 | Physical state | fixed-shape f32 qpos/qvel arrays; scalar simulation time |
+| Mocap state, when present | flattened f32 position/quaternion arrays, model order |
 | Transition | fixed-shape f32 observation/action arrays; scalar reward and boolean flags |
 | Optional next observation | validity flag plus f32 array only where present |
 | Run metadata | scalar string containing versioned JSON; u8 array containing the compiled model |
@@ -83,6 +85,21 @@ bytes, not per-step calls. `commit=False` is not assumed to eliminate memory
 cost or provide persistence; use it only for a demonstrated need with a bounded
 commit cadence and measured benefit.
 
+Implemented transport: a fixed shared CPU arena, one encoded batch per slot;
+small pipe messages carry slot/length and acknowledgments. Slots are not reused
+until `append_many(commit=True)` returns. Pickle is private same-program IPC only,
+not stored data or an accepted external format. Capture emits at most 64 rows per
+batch; the run used one 128 KiB slot. Oversized batches fail explicitly instead
+of allocating additional transport slots. The producer holds at most one pending
+batch plus callback-local tensors/arrays under the fixed task dimensions. One
+serialization and the child's decoding/SDK memory are additional allocations;
+the slot budget alone does not bound these or total RSS. Serialization can allocate
+before its size-limit check, so this is not a general untrusted-input memory limiter.
+
+The producer polls acknowledgments with a deadline and detects writer death.
+`finish` drains before publishing run_end; `abort` stops only its own child and
+does not mark success. This is failure reporting, not crash recovery/retry.
+
 The application budget counts filled slabs, queued/in-flight batches and any
 serialization copies it owns. It is not a bound on DreamDB/native connector
 memory, Torch allocator caches or total RSS; measure those independently. Use
@@ -109,6 +126,9 @@ boundary, while pause/step/seek can run on a desktop with the same stored data.
   labeled test task variation, not a claim that the native task terminates on falls.
 - Fixed-model playback excludes domain-randomized model parameters and arbitrary
   terrain/assets. Random reset states remain supported by recording actual state.
+- The actual Cartpole scene contains one mocap body. Capture now stores both its
+  position and quaternion; the original zero-mocap assumption was rejected at
+  startup. Nonzero actuator activation state remains unsupported.
 - Logical ordinal anchors make ordering unambiguous but require explicit simulation
   time; evaluate this ergonomics tradeoff as a database user.
 - Lossless typed arrays work, but their small-item/unbucketed cost is not yet measured.

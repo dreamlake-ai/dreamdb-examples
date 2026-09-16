@@ -78,9 +78,60 @@ materialize two anchor lists and can fetch neighboring env records in each
 bounded window. Whether a combined filtered/projection API materially improves
 this workload remains a measurement question, not an established engine defect.
 
-No DreamDB defect has yet been established. Real capture, full playback, training
-integration, bounded-writer failure behavior and recording performance remain
-unverified. This is a local example check, not a formal testbox verdict for core.
+No DreamDB defect was established by the storage slice. Its result is a local
+example check, not a formal testbox verdict for core.
+
+## Real mjlab capture and bounded writer
+
+The successful Slurm job completed in 34 seconds, exit 0, on one RTX PRO 6000
+Blackwell GPU. It requested four CPUs but the site's select/linear allocation
+reserved the 32-CPU node. The task configuration and command were defined in
+CAPTURE-RUN.md before submission. No training or production storage was involved.
+
+The existing runtime was not modified: DreamDB 0.0.13 was loaded from a temporary
+import directory, alongside mjlab 1.6.0, Torch 2.9.1+cu128, MuJoCo(-Warp) 3.11.0,
+Warp 1.14.0 and NumPy 2.5.3. Runtime pins describe this tested combination, not
+a claim that all upstream packages/files have an independently verified origin.
+
+| Primary check | Observed result |
+| --- | --- |
+| Real parallel capture | 32 environments, 11 steps, 352 transitions + 112 reset events = 464 event rows |
+| Distinct end/reset paths | 48 terminations, 32 time-outs; 80 complete episodes and 32 incomplete tails |
+| Independent reference | Auto-reset capture compared with separate manual-reset env.step/reset execution; event identity/fields/flags equal, maximum array difference 0.0 (check tolerance rtol=1e-5, atol=1e-6) |
+| Extra scene state | All mocap positions/quaternions captured and compared, as well as qpos/qvel, observations, actions, rewards and simulation time |
+| Bounded transport | One 131,072-byte shared slot; encoded in-flight high-water 21,519 bytes; 7 backpressure waits totaling 3.3877 s |
+| No silent loss under pressure | All 464 submitted events matched the reference after independent public-SDK reopening |
+| Writer death | CPU check killed only its own writer after a known published prefix; caller received failure, prefix stayed readable, run_end absent |
+| Cleanup | Coordinator removed generated dataset/reference/cache; scheduler reported COMPLETED and released the node |
+
+The CPU writer check ran on macOS and on the allocated Linux node: 11/11 rows
+matched under a one-slot queue, and both runs reached backpressure. Killing the
+child is a real worker-liveness failure; it does not establish recovery from
+every connector error or an ambiguous commit. No retry guarantee is made.
+
+### Corrected application assumption: Cartpole has a mocap body
+
+Two initial short executions stopped at the fixed-model capability check. The
+second printed the exact trigger: `na=0, nmocap=1, expanded_fields=[]`. Rejecting
+all mocap state would make even this selected task unsupported. The schema and
+recorder now preserve its position/quaternion using ordinary f32 typed arrays;
+the successful run compared those values too. The guard still rejects nonzero
+actuator activation state and expanded model fields. This was an adapter-envelope
+correction, not a DreamDB defect; no guard was simply removed to make the run pass.
+
+### Performance boundary
+
+3.3877 s of actual producer blocking is a useful cost signal, not an off/on
+training slowdown measurement. The 34 s job includes cold compilation, CPU writer
+checks, two simulation processes and a reader. The 128 KiB arena is not a bound
+on total host/GPU memory: decoded Python values, source arrays, one serialization,
+model startup and SDK/connector allocations are additional. Full throughput/RSS
+comparisons remain milestone T; no network or cluster-scale result is inferred.
+
+No core defect was demonstrated. The actual actor-observation capture is checked
+for this fixed action driver; PPO normalization/wrapper integration is not yet
+validated. Full playback, renderer state restoration and PPO training remain
+pending. Raw traces, models and large logs are not archived in this repository.
 
 ## How to report an actual finding
 

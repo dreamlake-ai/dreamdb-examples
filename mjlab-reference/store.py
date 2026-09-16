@@ -21,6 +21,11 @@ IDENTITY = ["kind", "env_id", "episode_id", "step_id", "sim_step"]
 FLAGS = ["terminated", "truncated", "next_observation_valid"]
 STATE = ["qpos", "qvel", "sim_time"]
 EVENT_FIELDS = IDENTITY + FLAGS + STATE + ["obs_t", "action", "reward", "obs_after"]
+MOCAP_FIELDS = ["mocap_pos", "mocap_quat"]
+
+
+def event_fields(metadata):
+    return EVENT_FIELDS + [name for name in MOCAP_FIELDS if name in metadata["dimensions"]]
 
 
 def schema(metadata: dict, model_size: int) -> dreamdb.Schema:
@@ -44,8 +49,11 @@ class LocalRunWriter:
 
     def __init__(self, root: Path, metadata: dict, model: bytes):
         dimensions = metadata["dimensions"]
-        if set(dimensions) != {"qpos", "qvel", "obs_t", "action", "obs_after"}:
+        base = {"qpos", "qvel", "obs_t", "action", "obs_after"}
+        if not base <= dimensions.keys() or set(dimensions) - base - set(MOCAP_FIELDS):
             raise ValueError("declare the five fixed-shape state/transition arrays")
+        if bool("mocap_pos" in dimensions) != bool("mocap_quat" in dimensions):
+            raise ValueError("mocap position and quaternion must be declared together")
         if not model or any(type(n) is not int or n <= 0 for n in dimensions.values()):
             raise ValueError("model and array dimensions must be nonempty")
         self.metadata = {
@@ -102,7 +110,7 @@ class LocalRunWriter:
         for row in events:
             if row.get("kind") not in {"reset", "transition"}:
                 raise ValueError("only reset/transition events may be appended")
-            if set(row) - set(EVENT_FIELDS):
+            if set(row) - set(event_fields(self.metadata)):
                 raise ValueError("unknown event fields or caller-supplied anchor")
             for name in IDENTITY[1:]:
                 if type(row.get(name)) is not int or row[name] < 0:
@@ -118,6 +126,7 @@ class LocalRunWriter:
                     needed.add("obs_after")
                 elif "obs_after" in row:
                     raise ValueError("invalid next observation must be absent")
+            needed.update(name for name in MOCAP_FIELDS if name in self.metadata["dimensions"])
             if not needed <= row.keys() or "sim_time" not in row:
                 raise ValueError("missing state/observation components")
             for name, dim in self.metadata["dimensions"].items():
@@ -187,7 +196,9 @@ def read_episode(dataset, env_id: int, episode_id: int, fields=None) -> list[dic
     """
     anchors = set(dataset.query_scalar("env_id", "==", env_id))
     anchors.intersection_update(dataset.query_scalar("episode_id", "==", episode_id))
-    fields = EVENT_FIELDS if fields is None else fields
+    if fields is None:
+        header = read_window(dataset, ["metadata"], 0, 1)
+        fields = event_fields(json.loads(header[0]["metadata"]))
     rows = []
     # Fetch each fixed logical window once, not once per selected anchor.
     for window in sorted({anchor // 256 for anchor in anchors}):

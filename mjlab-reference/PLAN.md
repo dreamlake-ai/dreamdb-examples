@@ -1,7 +1,7 @@
 # Implementation and acceptance plan
 
-Status: design and local storage-slice milestones completed. Capture, playback
-and training remain pending. Changes are tracked in examples issue #2.
+Status: design, storage slice and bounded real capture completed. Playback and
+training remain pending. Changes are tracked in examples issue #2.
 
 ## Milestones
 
@@ -25,6 +25,9 @@ storage mapping, NOT mjlab hook timing. Resolve a demonstrated SDK gap before
 proceeding; record the actual API composition and version.
 
 ### C — Real capture and bounded writer
+
+Completed on one Slurm GPU node; see FINDINGS.md. The accepted envelope includes
+the scene's mocap state, but no actuator activation state or model randomization.
 
 Implement one RecorderTerm and the small action-loop integration needed to preserve
 policy inputs. Use the installed Cartpole task, fixed model, no model DR, initially
