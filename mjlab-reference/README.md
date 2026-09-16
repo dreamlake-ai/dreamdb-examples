@@ -185,3 +185,55 @@ boundary, with PPO exact readback and independent playback passing. This is an
 unreleased core fix, not another adapter/layout change. See [FINDINGS.md](FINDINGS.md)
 for the pinned wheel, individual runs, memory and limitations; it is not a
 sustained-throughput or large-fleet claim.
+
+## Batch episode and simulation-time windows
+
+`windows.py` is a read-only application reference, using released DreamDB 0.0.13
+and NumPy. It does not import mjlab, MuJoCo or Torch. The CPU check uses the existing
+minimal MuJoCo fixture only to create a valid recorded model asset:
+
+```sh
+.venv/bin/python -B check_windows.py
+```
+
+Use one pinned reader across calls; build the identity catalogue once:
+
+```python
+from windows import EpisodeReader, StepWindow, TimeWindow
+
+reader = EpisodeReader(
+    backend, manifest,
+    end_anchor=recorded_event_count + 2,  # clean snapshot: run_start + events + run_end
+    page_rows=256, max_scan_rows=100_000,
+)
+batch = reader.read_windows(
+    [StepWindow(0, 0, 0, 3), TimeWindow(1, 0, 0.05, 0.15)],
+    fields=["obs_t", "action", "reward", "obs_after",
+            "next_observation_valid", "terminated", "truncated"],
+)
+for window in batch.windows:
+    for row in window.rows:
+        consume(row)  # caller defines collation, masking and training semantics
+```
+
+`end_anchor` is an explicit exclusive ordinal bound from your publication receipt;
+the formula above applies only to a clean run with a published end marker. Step
+windows are half-open and exact; time windows filter recorded simulation time and
+can be empty. Neither crosses into another episode. Default reads require complete
+episodes; pass `allow_incomplete=True` deliberately for a captured prefix. Missing
+next observations stay `None`, not zeros. Repeated requests preserve output order
+and return independent arrays.
+
+There is no global random sampler, padding, prefetch pool or Torch DataLoader.
+Choose those policies in your own application. The reader reuses its O(prefix
+transitions) identity catalogue, coalesces overlapping payload pages per batch,
+and reads only explicit fields plus an internal `kind` anchor carrier. It does
+not load model bytes for window reads. Scan/request/output-row caps are explicit;
+SDK/native metadata and caller-retained arrays are not covered by a total-RSS
+guarantee. This is not yet a large-dataset ingestion/replay service.
+
+In the local 88-event fixture, 32 requests return the same 64 output rows while
+reducing payload window calls from 32 to 1 (2,848 to 89 rows returned by those
+calls). Index setup is measured separately; these are SDK calls, not network GETs.
+See [WINDOW-SPEC.md](WINDOW-SPEC.md), [WINDOW-PLAN.md](WINDOW-PLAN.md),
+[FINDINGS.md](FINDINGS.md) and [issue #4](https://github.com/dreamlake-ai/dreamdb-examples/issues/4).

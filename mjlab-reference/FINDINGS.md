@@ -348,6 +348,59 @@ allocation. Stop tuning at this material result; remaining array/file overhead
 is not claimed fixed. Follow [core #381](https://github.com/dreamlake-ai/dreamdb-core/issues/381)
 for review/merge/release, rather than assuming users already have the fix.
 
+## Episode-window read prototype (2026-09-16)
+
+[Issue #4](https://github.com/dreamlake-ai/dreamdb-examples/issues/4) starts with
+the public APIs already present in released `dreamdb==0.0.13`; no new core API
+or dependency on the unreleased #381 fix. Python 3.12.13/macOS, NumPy 2.5.3,
+MuJoCo 3.11.0 for the existing minimal model fixture. The reader itself needs
+only DreamDB/NumPy and application semantics. This is a direct local SDK check,
+not a core testbox or GPU/training verdict.
+
+`check_windows.py` uses eight interleaved copies of the existing 11-event storage
+fixture (88 events), a real minimal model, and the public writer. The reader
+reopens a pinned Manifest; a later append completes an old incomplete episode in
+a new snapshot, but cannot alter old window results. Exact anchors, ordering,
+scalar values, ndarray dtype/shape/bytes and absent next observations pass for
+step/time/duplicate/overlapping requests. Incomplete episodes require opt-in,
+missing steps are refused, and overlapping output arrays do not alias. A later
+reader sees the newly completed episode. No playback/trainer code was changed.
+
+Projection is observed at the actual SDK call boundary: index reads contain
+identity/clock/flags plus the initial metadata read, no model/array payload.
+Payload reads contain the requested fields plus `kind`, necessary to preserve
+terminal rows under an optional-only projection. Three distinct 32-ordinal
+pages are fetched once each for the mixed overlap scenario. There is no second
+framework to validate these counters.
+
+Separate comparison uses 32 requests (16 episodes twice, two transitions each),
+same fields and 256-ordinal page size as existing `read_episode`. All 64 output
+rows are compared to input in both paths. One local run, not a timing threshold:
+
+| Work | Existing episode reader | Batched reader |
+|---|---:|---:|
+| One-time catalogue construction | none | 10.34 ms |
+| Payload/selection call elapsed | 637.15 ms | 18.41 ms |
+| Scalar-query calls during requests | 64 | 0 |
+| Projected window calls during requests | 32 | 1 |
+| Rows returned by payload window calls | 2,848 | 89 |
+| Output rows, including requested repetitions | 64 | 64 |
+
+The initial 32-row-page catalogue took 20.33 ms / four calls; it is separate
+from the 256-row-page comparison above. File cache state is uncontrolled and
+the fixture was freshly written: "index construction" does not mean cold disk
+cache. Counters include actual public calls and returned rows, not physical
+object GETs, network bytes or total memory. The catalogue has an explicit prefix
+cap and still grows with indexed transitions. Batch payload memory also depends
+on field dimensions; native Track/index memory is not bounded by `page_rows`.
+This validates the overlap-saving mechanism, not large-corpus or S3 throughput.
+
+No new core deficiency was demonstrated by this slice. Future generic bounded
+selection/paging work must establish its own reachable need, rather than adding
+RL concepts to DreamDB or treating the prototype as a new database reader stack.
+Temporary models/backends are cleaned by the check; only source, conclusions and
+the reproduction command are retained. Ruff check/format pass for the new modules.
+
 ## How to report an actual finding
 
 Record: user-facing operation; exact SDK/core and example versions; smallest

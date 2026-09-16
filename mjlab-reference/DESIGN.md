@@ -13,6 +13,8 @@ Modules (bounded reference implementation, not a framework):
 | `check_capture.py` | Bounded capture/reference/read/playback coordinator; not a trainer |
 | `training.py` | Small RSL-RL wrapper; preserve actor input/action before stepping |
 | `check_training.py` | Actual PPO/rollout comparison and bounded off/on measurements |
+| `windows.py` | Snapshot-local identity catalogue, projected batch episode/time windows |
+| `check_windows.py` | Real SDK window round-trip and bounded overlap comparison |
 
 Playback has its own small CLI. There is no general-purpose runner abstraction.
 
@@ -147,6 +149,23 @@ and its original model, recomputing kinematics because GPU-derived poses can lag
 The player uses only the database-loaded model/state. This checks reconstruction,
 not the correctness of MuJoCo's forward-kinematics implementation itself.
 
+### Batched episode/time-window reads
+
+The old player remains unchanged. `EpisodeReader` is a separate reference for
+callers that already know which episode windows they need: one finite projected
+identity scan, then batched projected payload windows. It does not decide sample
+distribution, turn episode semantics into database schema machinery, or add a
+DataLoader/service. Step ranges use episode transition indices; time ranges use
+recorded simulation time, never the database's logical ordinal coordinate.
+
+The catalogue is reused only for one pinned Manifest/prefix and has an explicit
+scan cap. Payload pages are coalesced within a batch, without a cross-call cache.
+The entire Python SDK range is materialized before its batch list is returned;
+therefore each range is explicitly limited, rather than mistaking `batch_size`
+for a memory bound. Native metadata and array sizes remain additional costs.
+See WINDOW-SPEC.md and WINDOW-PLAN.md for the complete contract and implementation
+sequence, and FINDINGS.md for the actual one-time/warm cost split.
+
 ## 5. Explicit limitations and feedback
 
 - Cartpole's native task has a time-out termination only. Normal truncation can
@@ -159,7 +178,9 @@ not the correctness of MuJoCo's forward-kinematics implementation itself.
   startup. Nonzero actuator activation state remains unsupported.
 - Logical ordinal anchors make ordering unambiguous but require explicit simulation
   time; evaluate this ergonomics tradeoff as a database user.
-- Lossless typed arrays work, but their small-item/unbucketed cost is not yet measured.
+- Lossless typed arrays work; the measured small-item/unbucketed and scalar costs
+  are recorded in FINDINGS.md. The #381 candidate improves scalar append, not the
+  per-item array layout or its remaining file cost.
 - Filesystem performance is not S3/network performance. Do not extrapolate.
 - Appended data and a database commit do not resume a policy optimizer or RNG state.
 

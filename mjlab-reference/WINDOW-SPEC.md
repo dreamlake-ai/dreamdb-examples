@@ -1,6 +1,7 @@
 # Application contract: snapshot episode-window reads
 
-Status: first implementation target. This extends SPEC.md, not DreamDB's protocol.
+Status: implemented; checked on a bounded CPU public-SDK fixture. This extends
+SPEC.md, not DreamDB's protocol. No production-scale or remote-storage verdict.
 
 ## Identity and range
 
