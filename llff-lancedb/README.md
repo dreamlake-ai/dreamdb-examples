@@ -1,5 +1,9 @@
 # LLFF Camera Pose Index (LanceDB)
 
+**Status: companion comparison; current dependencies unverified.** This stores
+data in LanceDB, not DreamDB. It illustrates an alternative application mapping,
+not current product equivalence. See the [application catalog](../README.md).
+
 Same LLFF camera pose indexing use case as [`../llff-dreamdb/`](../llff-dreamdb/), but using [LanceDB](https://lancedb.github.io/lancedb/) as the vector store for comparison.
 
 LanceDB is an embedded vector database (no server needed) that stores data in Lance columnar format. This example shows the equivalent workflow side-by-side with the DreamDB version.
@@ -34,13 +38,7 @@ pip install lancedb params-proto numpy pyarrow Pillow
 | `scene_id` | string | Scene name |
 | `view_index` | int32 | View index within the scene |
 
-## Key Differences from DreamDB
+## Comparison boundary
 
-| | DreamDB | LanceDB |
-|---|---------|---------|
-| Architecture | Client-server | Embedded (in-process) |
-| Storage | S3-native, append-only log | Local Lance files |
-| Versioning | Built-in snapshots + branches | Implicit versioning via Lance |
-| Image storage | Inline blobs | Paths (images stored externally) |
-| Index type | LSH / IVF / IMI | IVF-PQ (auto-built) |
-| Streaming | Arrow batch streaming | PyArrow table scans |
+The historical layouts and APIs are not a current architecture or performance
+comparison. Revalidate both implementations before drawing such conclusions.

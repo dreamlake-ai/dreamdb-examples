@@ -1,20 +1,35 @@
 # Images and sensors from DreamDB into training
 
-Small external reference application for [issue #6](https://github.com/dreamlake-ai/dreamdb-examples/issues/6).
-Read [SPEC.md](SPEC.md) and [PLAN.md](PLAN.md) first. This is not a training product
-or a universal DreamDB streaming implementation.
+An external application reference: actual Cartpole state → PNG images,
+sensor/action records → a pinned DreamDB snapshot → four-frame samples → a
+small image/sensor regression model. It demonstrates storage-to-training data
+delivery, not policy quality or a universal training framework.
 
-Status: local public-SDK preflight and one real Slurm capture/read/train run passed.
-See [FINDINGS.md](FINDINGS.md) for exact results and limitations.
+**Status:** bounded CPU checks and real Linux/GPU capture/read/train experiments
+validated. The current application dependency file pins `dreamdb==0.0.13`.
+The later combined-core benchmark used private wheels; installing that package
+version alone does not promise the same performance.
 
-Actual Cartpole state → RGB PNG + sensor + action records → pinned DreamDB
-snapshot → four-frame windows → small image/sensor behavior-cloning regressor.
-The applied demonstration controller is state feedback, not a trained expert;
-successful data delivery and optimization do not imply a useful learned policy.
+## Start with the application
 
-## Run
+Read [SPEC.md](SPEC.md) for record/sample meanings and [PLAN.md](PLAN.md) for
+the original bounded implementation. The components are deliberately small:
 
-CPU preflight (tiny generated images, not real-scene acceptance):
+| File | Application responsibility |
+|---|---|
+| `data.py` | Write records, pin a snapshot, select windows and decode selected PNGs/arrays |
+| `run.py` | Generate the small real capture and run the baseline training/check workflow |
+| `network.py` | The demonstration model, independent of DreamDB |
+| `ondemand.py` | Optional bounded producer queue and explicit read/cache policies |
+
+DreamDB supplies ordinary image/array/scalar storage and projected snapshot
+reads. The application owns episode identity, ordinal anchors, train split,
+window selection, normalization, tensor layout and model. The reader imports
+DreamDB, NumPy and Pillow; simulation and Torch are needed only for their stages.
+
+## Smallest run: CPU storage/reader check
+
+From a checkout, with Python 3.12 and `uv` available:
 
 ```sh
 cd multimodal-training
@@ -23,168 +38,60 @@ uv pip install --python .venv/bin/python -r requirements.txt
 .venv/bin/python -B run.py preflight
 ```
 
-Real run requires Linux, CUDA/EGL and the existing compatible mjlab runtime:
-Python 3.12, mjlab 1.6.0, MuJoCo 3.11.0, Torch 2.9.1+cu128, NumPy 2.5.3,
-Pillow 12.3.0, and DreamDB 0.0.13. Install the SDK into a private import directory
-if reusing a shared environment; do not modify it in place. No RSL-RL required.
+This uses generated tiny images and actual public SDK storage. It is not real
+simulation or GPU-training evidence. The check cleans its generated temporary
+data; the `.venv` remains for you to reuse or remove.
+
+## Real capture and training
+
+Use a compatible Linux/CUDA/EGL environment: the measured runs used mjlab 1.6.0,
+MuJoCo 3.11.0, Torch 2.9.1+cu128, NumPy 2.5.3 and Pillow 12.3.0 with Python 3.12.
+Install this application's SDK privately if reusing a shared runtime.
+
+Inside a GPU allocation, from this directory:
 
 ```sh
-export PROTOTYPE_PYTHON=/absolute/path/to/compatible/python
-export PROTOTYPE_DIR=/absolute/path/to/multimodal-training
-sbatch --partition=YOUR_PARTITION --gres=gpu:YOUR_GPU_TYPE:1 \
-  --output=/task/scratch/run.log "$PROTOTYPE_DIR/run.slurm"
+python -B -u run.py all
 ```
 
-The coordinator invokes capture and train as separate processes with 240-second
-phase limits. Eight worlds, two 16-step episodes per world, 64x64 images, two
-training epochs. It removes the generated dataset, witness arrays and caches on
-exit. Set TMPDIR to task-local scratch if appropriate. Individual `capture DIR`
-and `train DIR` modes keep their data for diagnosis; users must clean that DIR.
-The user-created `.venv` remains until explicitly removed.
+This captures 8 worlds × 2 episodes × 16 steps, checks actual training inputs
+against independent capture witnesses, runs the model and removes generated
+data. It does not establish convergence or a useful learned controller.
+For Slurm, `run.slurm` accepts `PROTOTYPE_PYTHON` and `PROTOTYPE_DIR`; set your
+partition, GPU request and output path for your cluster. Do not train on a
+scheduler controller.
 
-`data.py` depends only on DreamDB, NumPy and Pillow. Image decoding, sample
-definition, split and Torch tensors are application responsibilities. Images are
-native Image fields, not embeddings or opaque text. It neither follows a moving
-Ref nor accesses private storage objects. Every training batch is read through
-public projected reads; witness arrays are only for acceptance, never optimizer
-input. Images are normalized to [0,1], sensor values remain in recorded units.
-
-## Performance boundaries
-
-One small catalogue holds identities/flags, capped at 4096 records. Batch requests
-are capped at 16 and share 32-row payload pages; selected PNGs are decoded once
-per batch. Calls can return unselected neighboring rows: report this amplification,
-not just useful bytes. There is no cross-batch payload cache, asynchronous prefetch,
-DataLoader worker pool, persistent selection index or total-RSS guarantee.
-
-Compare identical requests using one window per call and batched calls, alternating
-order by group. Report actual SDK call count, returned payload bytes and decode
-count. These are not object GETs or physical disk/network bytes. Timings include
-ordinary OS caches, which are not reset. The later training run is consequently
-not a cold-read benchmark. Catalogue, first batch, read/compare, and synchronous
-loader+transfer versus GPU compute times are separate. No speed threshold or
-production recommendation is inferred from this fixture.
-
-This first slice composes existing materializing range calls into bounded pages.
-Generic lazy multi-modality streaming remains a distinct core capability; neither
-the page size nor this small success proves billion-row memory behavior.
-
-## On-demand inputs without a training-ready artifact
-
-[ONDEMAND.md](ONDEMAND.md) specifies the separate issue #12 experiment: same raw
-PNG/sensor snapshot and task-time conversion, serial versus one spawned producer
-with two queued batches. It does not assume future training formats at ingestion.
-The earlier no-prefetch statement describes `run.py`, not this optional experiment.
-The real paired run passed input checks but showed only small loop savings;
-see [ONDEMAND-RESULTS.md](ONDEMAND-RESULTS.md).
-
-Use `ondemand.slurm` from an isolated directory containing `source/` (this directory)
-and `sdk/` (private DreamDB installation), adjusting its cluster/runtime paths.
-It captures once then runs serial/prefetch/prefetch/serial in separate processes.
-The script retains its task directory for results; remove that exact directory
-after recording conclusions. No core changes or remote transfer benchmark.
-
-[CACHE.md](CACHE.md) adds an optional 1 MiB decoded-record LRU experiment (#14).
-`cache.slurm` runs prefetch/cached/cached/prefetch on one capture. `ondemand.py cached
-DIR` keeps raw uint8 pixels and recorded sensor/action arrays, not task-shaped float
-tensors. The default Reader still has zero cache. The byte budget covers retained
-array payload, not total process memory; transformation and augmentation belong
-after the cache. See the measured stage breakdown in CACHE-RESULTS.md.
-
-[PAGES.md](PAGES.md) follows the public read bottleneck (#16). `pages.slurm probe`
-captures and compares projections; `pages.slurm train` reuses that capture for
-decoded-record versus raw-page cache comparisons. `ondemand.py pages DIR` uses a
-1 MiB raw PNG/array page cache and disables the decoded-record cache. No training
-tensor or augmentation is cached. The tiny compressed fixture fits this budget;
-results must not be treated as a larger-than-cache dataset benchmark.
-See [PAGES-RESULTS.md](PAGES-RESULTS.md) for projection costs and paired results.
-
-[AMPLIFICATION.md](AMPLIFICATION.md) tests the next boundary (#18): a real
-1,024-record capture, unchanged task semantics, and a working set larger than
-the same 1 MiB cache. `amplification.slurm` captures, traces three bounded public
-reads, then runs prefetch/pages/pages/prefetch. `amplification-repeat.slurm` reads
-the same range twice through one handle, tracing only the second query. Schedule
-it after the training job so tracing cannot perturb its timing. `trace_reads.py`
-summarizes successful backend file-read bytes between the explicit markers; these
-are filesystem-delivered bytes, not physical disk traffic. Delete the task traces
-after recording conclusions. The actual reader is still released 0.0.13, not #384.
-See [AMPLIFICATION-RESULTS.md](AMPLIFICATION-RESULTS.md): the larger working set
-thrashes this cache, and application overfetch is separate from metadata rereads.
-
-## Training-ready inputs: two delivery stages
-
-[STAGES.md](STAGES.md) defines the next slice ([issue #8](https://github.com/dreamlake-ai/dreamdb-examples/issues/8)).
-It moves PNG decode, float conversion, normalization and NCHW window construction
-into an explicit, reusable upstream materialization. No cost disappears: four-frame
-float32 windows occupy substantially more bytes than the compressed source.
-The first real two-stage run passed; see [STAGES-RESULTS.md](STAGES-RESULTS.md)
-for the measured preparation cost, 47.8x artifact expansion and local input timing.
+To retain a capture for inspection, use a **new** task directory:
 
 ```sh
-# CPU check of materialize → byte delivery → mmap:
-.venv/bin/python -B pipeline.py preflight
-
-# Inside the same bounded Slurm allocation as the real run:
-python -B -u pipeline.py all
+mkdir /absolute/new/task-directory
+python -B -u run.py capture /absolute/new/task-directory
+python -B -u ondemand.py exact /absolute/new/task-directory
 ```
 
-The coordinator runs capture, the original PNG-based read/train path, then:
+`exact` selects only consecutive requested anchors; it preserves sample order
+and uses a two-batch producer queue. It is opt-in: the default Reader retains
+fixed-page selection. These individual commands retain the task's backend,
+receipt and witnesses; remove that exact task directory when finished.
 
-```sh
-python -B -u pipeline.py prepare /task/capture     # upstream build → ready/
-python -B -u pipeline.py deliver /task/capture     # local byte-copy + digest → delivered/
-python -B -u pipeline.py train-local /task/capture # only delivered/ is needed
-```
+## Choose an alternative only when needed
 
-`prepare` needs that directory's backend and receipt. Both output directories must
-be new; there is no resume/overwrite or cache replacement policy in this reference.
-`deliver` is a local transport baseline, not a MinIO/S3 downloader or a network
-benchmark. The design makes those transports byte-only; remote speed is not this
-slice's priority. The ready manifest is copied last after all tensor files verify.
-This is application completion, not an fsync crash-durability guarantee.
+[EXPERIMENTS.md](EXPERIMENTS.md) maps measured alternatives and their costs:
+prefetch, decoded/raw-page caches, exact selection, core read optimization,
+and optional prepared tensors/frame banks. Start there for performance work;
+do not assume a ready format is necessary at ingestion.
 
-`train-local` imports no DreamDB connector or image decoder and needs neither the
-original database nor capture witnesses. It maps immutable float32 arrays, gathers
-requested samples straight into a reusable pinned host batch and transfers them
-to a reusable GPU batch. It synchronizes a CUDA completion event before declaring
-inputs ready; no hidden normalize/transpose in the loop. Arbitrary sample shuffle
-still needs gathering and host-to-device copies. No async prefetch/compute overlap
-or GPU-direct storage is claimed.
+Historical run commands and detailed prepared-format instructions remain in
+[HISTORICAL-GUIDE.md](HISTORICAL-GUIDE.md). Most experiment Slurm scripts encode
+the measurement cluster's runtime paths and must be adapted before use.
 
-The acceptance-only `verify-local` mode also checks all ready tensors against
-capture witnesses, requires the original source path to be absent, and checks one
-completed device copy exactly. `pipeline.py all` runs it after renaming its own
-temporary source, then cleans the entire task directory. The witness check warms
-file pages; these measurements are not cold-storage or theoretical memory limits.
-Use plain `train-local` for independent local-only consumption without witnesses.
+## Boundaries
 
-## Lossless frame-bank layout
+The identity catalog is capped at 4,096 records and each request at 16 windows.
+The reference is not a generic lazy multimodal stream, an arbitrary-scale
+DataLoader, a download benchmark or a process-RSS guarantee. Results distinguish
+SDK-returned payload from physical I/O and never use witness data as optimizer
+input. Snapshot and input consistency matter independently of speed.
 
-[FRAMEBANK.md](FRAMEBANK.md) specifies a storage-only follow-up ([issue #10](https://github.com/dreamlake-ai/dreamdb-examples/issues/10)):
-each normalized float32 CHW frame and sensor row is stored once, in episode/step
-order. Windows reference consecutive frames; local gathering copies a contiguous
-view directly into pinned memory. No float16, quantization, decode, normalization
-or changed sample shuffle is introduced. Exact output tensors remain the v1 contract.
-
-The real paired run passed: artifact size fell 69.2%, with 20-batch input time
-5.729 ms versus 5.749 ms in this run. See [FRAMEBANK-RESULTS.md](FRAMEBANK-RESULTS.md)
-for costs, warm-cache limitations and reproduction.
-
-```sh
-# CPU SDK preflight with actual overlapping window references:
-.venv/bin/python -B pipeline.py preflight-frames
-
-# One bounded Slurm GPU run: capture, prepare, then train both layouts:
-python -B -u pipeline.py compare-frames
-
-# Individual phases, with existing ready/ tensors:
-python -B -u pipeline.py prepare-frames /task/capture
-python -B -u pipeline.py train-local /task/capture --layout frames
-```
-
-`prepare-frames` repacks `ready/` into `ready-frames/`, compares every window's
-output to v1 and byte-delivers it to `delivered-frames/`. It does not yet construct
-directly from the database; report original materialization and this additional
-repack/transient-space cost separately. Existing destinations are never overwritten.
-`compare-frames` deliberately omits the old PNG performance sweep, runs the same
-trainer/model/request order on both layouts, and cleans its generated artifacts.
+See [the repository contribution guide](../CONTRIBUTING.md) to adapt this pattern
+to another application instead of growing this reference into a shared trainer.

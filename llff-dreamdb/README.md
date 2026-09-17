@@ -1,5 +1,11 @@
 # LLFF Camera Pose Index (DreamDB)
 
+**Status: legacy / current SDK compatibility unverified.** The code imports
+`dreamdb_dataset` and the historical instructions install `dreamdb-dataset`.
+They have not been migrated to or rerun against the current `dreamdb` SDK.
+Keep this as a domain-model reference, not a current copy-and-run quick start.
+See the [application catalog](../README.md) for validated patterns.
+
 Index [LLFF](https://github.com/Fyusion/LLFF) scenes in DreamDB so you can search for views by camera pose similarity.
 
 Each record stores the camera's principal ray as a 6-d [Plücker coordinate](https://en.wikipedia.org/wiki/Pl%C3%BCcker_coordinates) for vector similarity search, plus the source image and depth bounds.
