@@ -157,3 +157,12 @@ The exact key/Ref inventory and deletion result are retained locally in
 `/Users/locatino/fortyfive/artifacts/ego100k-400/media-cleanup.json`.
 The next ingest uses a fresh Ref and the original-only segmented contract in
 PLAN.md; no new ingest was launched as part of this cleanup.
+
+## Blocking fixes (local only)
+
+See [FIXES.md](FIXES.md): S3 409 classification passes 25 HTTP boundary tests;
+base-field multi-append merge now passes the original ingest integration case
+and exact scalar readback; Python VideoItem schema/publication is implemented
+and its installed-wheel selection passes (389 passed, 1 skipped).
+These supersede the local implementation gaps, not the earlier S3 measurements.
+No patched remote rerun, formal bound testbox verdict, CI or package release yet.
