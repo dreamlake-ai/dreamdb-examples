@@ -2,6 +2,9 @@
 
 Issue: dreamlake-ai/dreamdb-core#400. Semantic search only; no lexical index.
 
+Current measured summary: [RESULTS.md](RESULTS.md). Bounded cloud jobs are
+complete; this is not closure of the full-scale/request-accounting work.
+
 ## What is established
 
 - The new private task bucket exists, with public access blocked. Source/model
@@ -26,7 +29,7 @@ Issue: dreamlake-ai/dreamdb-core#400. Semantic search only; no lexical index.
   checksum verified. Runtime job 147823 passed on RTX5090 with torch 2.9.1+cu128
   and torchvision 0.24.1+cu128. One srun probe (147822) failed step creation;
   sbatch is the working launch path. These are setup findings, not DB failures.
-- Video-payload concurrency and connector-level HTTP counters are still pending.
+- Video-payload concurrency is now measured in 147838; HTTP counters remain pending.
   Application phase timing is not backend traffic measurement.
 
 ## Real pilot and first write case
@@ -80,12 +83,23 @@ acknowledged 256, the other exhausted five explicit conflicts with zero
 acknowledgements; all acknowledged records reconciled, readback issues empty.
 The original short-backoff strategy was NOT advanced to 4/8/16 or relabelled
 successful. A separate seconds-scale jitter strategy retains the five-attempt
-cap; tune job 147834 also measures single-writer batches 32/128/512.
+cap; tune job 147834 measured single-writer batches 32/128/512 at
+21.602 / 5.149 / 1.554 s, all PASS. Jitter two-writer passed; four-writer stopped
+on unclassified S3 409 ConditionalRequestConflict, with all 384 acknowledged
+records reconciled. No 8/16-writer escalation. Local core fix 8679b25 has 25
+native connector tests passing; no patched package was used in these results.
 
 Pipeline 147833 additionally overlaps one next preview with current encoding
-and append. It is in progress; tune 147834 depends on its successful completion.
+and append. It passed at 406.778 s, not an improvement over 147828; comparison
+147837 found all 10,440 anchor/vector records identical. Tune followed it.
 The earlier queued pipeline 147832 was cancelled after its failed dependency,
 before execution. No result is attributed to that job.
+
+Read-only hit resolution 147835 passed. After tune stopped, its dependency was
+explicitly changed to afterany; that released only independent read/media work,
+not further same-Ref escalation. 147836 passed 320 retrieval queries (all
+anchors/order equal to serial). 147838 passed 16 real clip pairs at all five
+independent writer levels, with full media digest readback; details in RESULTS.
 
 No saturation, recall or request-minimality claim is established.
 No production Ref, old dataset, ACL, GC or public package was changed. No CI run.
@@ -94,10 +108,27 @@ No production Ref, old dataset, ACL, GC or public package was changed. No CI run
 
 Local worktrees: `/Users/locatino/fortyfive/ddb-ego100k-ingest` and
 `/Users/locatino/fortyfive/ddb-ego100k-bench` (local commits, not pushed).
+Core fix: `/Users/locatino/fortyfive/ddb-400-cas`, local commit 8679b25,
+awaiting formal qualification/review. Keep these small source worktrees until
+handoff; unique unpublished work is not removed.
 Selection and concise preflight outputs: `artifacts/ego100k-400/` in the local
-fortyfive directory. Cluster task root: `/home/tom/ddb-ego100k-400`; job output
-and `runs/<job>/scratch-path.txt` identify task-only artifacts. Keep while the
-pilot is unfinished; clean completed scratch after collecting the result.
+fortyfive directory. Cluster task root: `/home/tom/ddb-ego100k-400`, now 33 MiB,
+retains the original 147824 real vector inputs/calibration for reproduction,
+selection, small scripts and reports. Duplicate optimized-run vectors were
+removed after byte-for-byte comparison; the baseline remains.
+
+After all benchmark jobs ended, Slurm cleanup 147840 completed with exit 0 on
+node-099: twelve explicit task scratch directories (about 4.2 GiB) removed.
+These held disposable model downloads and installed dependencies. Removed the
+remote 904 MiB release-source/build tree and 135 MiB downloaded tool directory,
+and the local core fix's 741 MiB target directory. Shared caches/services and
+user-owned worktrees were not touched. These artifacts are reconstructible;
+rerunning the helpers requires reinstalling the pinned standalone uv and
+rebuilding dump_exact_subset at python-v0.0.14, as documented in README.
+
+Job 147829 recorded `/tmp/ego100k-writes.xZTi1YFM`; it is absent on node-099 and
+its completed Slurm placement has expired (accounting disabled). No claim of
+cross-node deletion is made; no broad machine scan was performed.
 Source originals/previews in the S3 task bucket are intentionally retained.
 STS tokens exist only in submitting/job process environments, no credential
 files. The three-hour sessions can remain valid until expiry after process exit.

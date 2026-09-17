@@ -1,6 +1,6 @@
 # Egocentric-100K semantic-search and concurrent-write benchmark
 
-**Experimental; bounded real pilot, concurrent-write measurements in progress.** Tracks
+**Experimental; bounded real-data measurements, not full-scale qualification.** Tracks
 [core #400](https://github.com/dreamlake-ai/dreamdb-core/issues/400).
 
 This application turns permitted real video into frame embeddings and previews,
@@ -30,7 +30,8 @@ another dataset's legacy ingest commands. Tested SDK is released dreamdb 0.0.14;
 model/tokenizer and runtime pins are in the adapter. This example owns the
 workload, comparisons and results, not a second ingest engine.
 
-See [PROGRESS.md](PROGRESS.md) for the current measured scope. The first real
+See [RESULTS.md](RESULTS.md) for measured results and [PROGRESS.md](PROGRESS.md)
+for remaining scope and cleanup. The first real
 run stores 58 clips and 10,440 vectors, not the full 100K-hour corpus. Its source
 and preview bytes were read back and checked; semantic query probes pass.
 
