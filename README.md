@@ -6,7 +6,8 @@ Usage examples for [DreamDB](https://dreamdb.dreamlake.ai) with real-world datas
 
 | Example | Description |
 |---------|-------------|
-| [`mjlab-reference/`](mjlab-reference/) | Design-led simulation prototype (storage and parallel capture validated; playback pending) |
+| [`mjlab-reference/`](mjlab-reference/) | Design-led parallel simulation recording, playback, PPO integration and batch window reads |
+| [`multimodal-training/`](multimodal-training/) | Image and sensor windows from a pinned DreamDB snapshot into a small training model |
 | [`llff-dreamdb/`](llff-dreamdb/) | LLFF scene with Plücker coordinate vector index (DreamDB) |
 | [`llff-lancedb/`](llff-lancedb/) | Same LLFF use case using LanceDB for comparison |
 | [`llff-rerun/`](llff-rerun/) | Convert LLFF scenes to Rerun (.rrd) + LanceDB for visualization |

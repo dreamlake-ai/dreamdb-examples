@@ -1,0 +1,5 @@
+# CPU storage preflight only. Simulation/training additionally needs the pinned
+# Linux GPU runtime listed in README; ordinary DreamDB users do not need it.
+dreamdb==0.0.13
+numpy==2.5.3
+pillow==12.3.0
