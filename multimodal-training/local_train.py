@@ -39,14 +39,21 @@ def check_inputs(store, root):
                 )
 
 
-def train_local(root, *, verify=False):
+def train_local(root, *, verify=False, layout="windows"):
     setup_started = time.perf_counter()
     import torch
     from torch import nn
 
     torch.manual_seed(71)
     torch.set_num_threads(4)
-    store = LocalBatches(root / "delivered")
+    if layout == "windows":
+        store = LocalBatches(root / "delivered")
+    elif layout == "frames":
+        from framebank import FrameBatches
+
+        store = FrameBatches(root / "delivered-frames")
+    else:
+        raise ValueError("unknown training-ready layout")
     check_started = time.perf_counter()
     if verify:
         check_inputs(store, root)
@@ -61,7 +68,7 @@ def train_local(root, *, verify=False):
         {tuple(store.samples[i][0]) for i in training}
         & {tuple(store.samples[i][0]) for i in validation}
     )
-    shapes = {name: array.shape[1:] for name, array in store.arrays[0].items() if name != "anchors"}
+    shapes = {name: shape for name, shape in store.sample_shapes.items() if name != "anchors"}
     # Reuse a single pinned batch and one device batch. Compute completes before
     # either is reused; no async-buffer lifetime promise based on timing luck.
     host = {

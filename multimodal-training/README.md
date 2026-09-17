@@ -115,3 +115,34 @@ completed device copy exactly. `pipeline.py all` runs it after renaming its own
 temporary source, then cleans the entire task directory. The witness check warms
 file pages; these measurements are not cold-storage or theoretical memory limits.
 Use plain `train-local` for independent local-only consumption without witnesses.
+
+## Lossless frame-bank layout
+
+[FRAMEBANK.md](FRAMEBANK.md) specifies a storage-only follow-up ([issue #10](https://github.com/dreamlake-ai/dreamdb-examples/issues/10)):
+each normalized float32 CHW frame and sensor row is stored once, in episode/step
+order. Windows reference consecutive frames; local gathering copies a contiguous
+view directly into pinned memory. No float16, quantization, decode, normalization
+or changed sample shuffle is introduced. Exact output tensors remain the v1 contract.
+
+The real paired run passed: artifact size fell 69.2%, with 20-batch input time
+5.729 ms versus 5.749 ms in this run. See [FRAMEBANK-RESULTS.md](FRAMEBANK-RESULTS.md)
+for costs, warm-cache limitations and reproduction.
+
+```sh
+# CPU SDK preflight with actual overlapping window references:
+.venv/bin/python -B pipeline.py preflight-frames
+
+# One bounded Slurm GPU run: capture, prepare, then train both layouts:
+python -B -u pipeline.py compare-frames
+
+# Individual phases, with existing ready/ tensors:
+python -B -u pipeline.py prepare-frames /task/capture
+python -B -u pipeline.py train-local /task/capture --layout frames
+```
+
+`prepare-frames` repacks `ready/` into `ready-frames/`, compares every window's
+output to v1 and byte-delivers it to `delivered-frames/`. It does not yet construct
+directly from the database; report original materialization and this additional
+repack/transient-space cost separately. Existing destinations are never overwritten.
+`compare-frames` deliberately omits the old PNG performance sweep, runs the same
+trainer/model/request order on both layouts, and cleans its generated artifacts.
