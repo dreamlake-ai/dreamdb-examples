@@ -129,6 +129,31 @@ rebuilding dump_exact_subset at python-v0.0.14, as documented in README.
 Job 147829 recorded `/tmp/ego100k-writes.xZTi1YFM`; it is absent on node-099 and
 its completed Slurm placement has expired (accounting disabled). No claim of
 cross-node deletion is made; no broad machine scan was performed.
-Source originals/previews in the S3 task bucket are intentionally retained.
+Source originals/previews were retained at this checkpoint; the authorized
+cleanup below supersedes this statement for obsolete media runs.
 STS tokens exist only in submitting/job process environments, no credential
 files. The three-hour sessions can remain valid until expiry after process exit.
+
+## Authorized obsolete-media cleanup (2026-09-17)
+
+Deleted from the isolated task bucket: 673 video-path objects totaling
+6,937,625,720 bytes, plus 33 obsolete test Refs (706 keys in total).
+The retired runs are pilots 147828/147833 and media groups
+04883ed18589, 08f86c186977, 68e088121568, d7640592e590, dd6a38196858.
+Before deletion, all current Ref manifests were read to check that the target
+timelines were not shared with retained Ref bindings; exact target Ref bytes
+were rechecked. S3 acknowledged every deletion without errors, subsequent
+listings showed the 33 video prefixes empty and the target Refs absent.
+
+Bucket versioning was disabled: these S3 deletions are not reversible.
+The pinned HF input can be downloaded again. Baseline ego100k-pilot-147824
+remains available for original/media and semantic regression, and all
+ego100k-write-* Refs remain for vector/concurrency tests and CAS reproduction.
+No global index/compressor, vector data, Manifest history or other dataset was
+deleted; residual unreferenced metadata is intentionally left without GC.
+Thus this is obsolete-media cleanup, not an empty-bucket reset.
+
+The exact key/Ref inventory and deletion result are retained locally in
+`/Users/locatino/fortyfive/artifacts/ego100k-400/media-cleanup.json`.
+The next ingest uses a fresh Ref and the original-only segmented contract in
+PLAN.md; no new ingest was launched as part of this cleanup.

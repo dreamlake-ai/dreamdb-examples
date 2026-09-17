@@ -2,6 +2,30 @@
 
 Issue -> workload spec -> implementation plan -> bounded execution, per #400.
 
+## Superseding media decision (2026-09-17)
+
+The next run must use a fresh Ref: source HEVC video only, stream-copy
+segmentation without re-encoding, no preview or compatibility transcode.
+Embedding frames must be decoded from the original. The whole-clip + preview
+measurements below remain historical results, not the new ingestion contract.
+Use per-item decoder initialization and fragment indexes (VideoItem); the old
+flat CMAF Track's shared-init constraint must not be bypassed for heterogeneous
+originals. Python 0.0.14 exposes VideoItem reads but lacks its schema/write
+bindings; resolve this integration gap before launching another pilot.
+
+Primary claim for the next media check: independently initialized real source
+clips can be published as no-transcode fragments, fetched for a time window and
+decoded, with encoded content retained. A bounded real publish/range-read/decode
+check is sufficient; container-byte identity is not required after remuxing.
+Do not infer browser playback from successful storage or FFmpeg decoding.
+The existing pilot resource/selection bounds remain unchanged.
+
+The user authorized removing obsolete uploaded originals and previews. Keep
+baseline pilot 147824 for original-media/semantic regression and all vector
+write-test Refs (including CAS failure reproduction); retire duplicate pilots
+147828/147833 and the five completed media-throughput groups. Do not run GC,
+delete global shared indexes, or apply this permission to other datasets.
+
 Reuse decision: [INGEST-REUSE.md](INGEST-REUSE.md). Data preparation belongs in
 dreamlake-ingest's existing phase library and a new ego100k adapter. This example
 retains the experiment contract, query/write workload and results, not a second
