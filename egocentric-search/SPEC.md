@@ -75,8 +75,10 @@ Only explicit SDK PublishConflict is retryable after reopening; unknown outcomes
 stop and are included in fresh-reader reconciliation, not blindly resubmitted.
 Every concurrency/mode case uses fresh Refs and the same selected real payloads.
 Readback checks the exact vector AND its digest, not merely a count or marker.
-No lexical field/index is created. Each level is explicitly launched; the script
-does not automatically escalate or consolidate. Video-bearing writes are a
+No lexical field/index is created. The Python runner executes one level only.
+After pilot success, the Slurm driver runs the bounded 1/2/4/8/16 staircase in
+both modes (at most ten cases), stopping at the first nonzero case. No consolidation.
+Video-bearing writes are a
 separate payload case, not something this vector-only result proves. Request
 counts remain unmeasured until actual connector instrumentation is available.
 
