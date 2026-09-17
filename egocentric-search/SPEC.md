@@ -86,6 +86,28 @@ Read and write baselines run separately first. Mixed read/write is a later matri
 after isolated results, not a hidden source of interference. S3 is the measured
 storage backend, not HF. Private dataset permissions remain intact.
 
+### Bounded follow-through after the first pilot
+
+- `read_stress.py`: same pinned 147824 snapshot, four actual stored image query
+  vectors sampled across the first shard, 64 queries per level, 1/2/4/8/16
+  reader processes. Fixed top-k=10, nprobe=32, empty projection. Compare all
+  result anchors/order to serial baselines. Closed loop, no cold-cache or
+  text-relevance claim. Twenty-minute job limit; 320 timed queries maximum.
+- `resolve_hit.py`: one actual non-base text-query hit, resolve whole-clip base
+  using the application's one-hour stride, require in-clip offset and exact
+  original/preview digests. Read only; not a generic temporal join or efficient
+  range-playback claim.
+- `media_stress.py`: first 16 distinct clip pairs by anchor in the verified pilot,
+  staged and checked before any benchmark writes, <=1 GiB total. Independent
+  Refs only, 1/2/4/8/16 writers, fixed 16 pairs per level and one clip per commit.
+  At most 5 GiB logical replicated payload, no automatic retries or additional
+  HF input. Fresh read checks original and preview digests. Thirty-minute job
+  limit. Preparation, Ref creation and verification excluded from write-window
+  throughput, startup/local load separately reported. No consolidation claim.
+
+The public SDK measurements do not supply HTTP request/traffic counters. Report
+that gap explicitly rather than infer them from calls or payload bytes.
+
 ## Limits
 
 Pilot: 1 GPU, 8 CPUs, 32 GiB RAM, 2 hours, <=8 GiB source shards, <=64 clips,

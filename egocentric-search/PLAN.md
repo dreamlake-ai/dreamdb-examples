@@ -17,7 +17,8 @@ ingest engine. Required SDK/media/source adaptations precede runtime claims.
    us-east-1 (configured default, not a measured proximity claim). Ownership
    BucketOwnerEnforced, all four public access blocks, SSE-S3 AES256 and task
    tags. Authentication for workers must be short-lived and scoped to this
-   bucket; never copy the user's long-lived AWS key. No data uploaded yet.
+   bucket; never copy the user's long-lived AWS key. The bounded pilots now
+   retain real originals/previews and vectors there; see PROGRESS.md.
 3. **Metadata selection**: deterministic spread across factories, seeded worker
    and shard selection; known sizes, <=8 GiB. Retain the manifest with the run.
    Sampling does not claim population representativeness or labeled relevance.
@@ -69,4 +70,5 @@ same-Ref CAS conflict classification/reconciliation is a distinct workload.
 Use actual precomputed pilot data, stable disjoint anchors and fresh-reader
 verification of acknowledged contents. Stop escalation on missing/changed
 acknowledged data or unclassified commit outcomes. Fix product defects at their
-source, not by relaxing the readback assertion. No stress result exists yet.
+source, not by relaxing the readback assertion. Measured results and stopped
+cases are recorded in PROGRESS.md; they do not establish full-corpus scale.
