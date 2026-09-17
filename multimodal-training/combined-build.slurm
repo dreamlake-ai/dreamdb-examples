@@ -17,7 +17,7 @@ cargo --version
 for variant in baseline combined; do
     echo "BUILD_START $variant $(date -u +%FT%TZ)"
     git -C "$task_root/core-$variant" rev-parse HEAD
-    PYTHONPATH="$task_root/tools" python3 -m maturin build --release --locked \
+    "$task_root/tools/bin/maturin" build --release --locked \
         --compatibility linux --interpreter "$runtime" \
         --manifest-path "$task_root/core-$variant/dreamdb-dataset-python/Cargo.toml" \
         --out "$task_root/wheel-$variant"
