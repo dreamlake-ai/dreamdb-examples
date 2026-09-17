@@ -10,6 +10,7 @@ import json
 import multiprocessing as mp
 import os
 import re
+import random
 from pathlib import Path
 import subprocess
 import tempfile
@@ -37,8 +38,9 @@ def rows_for(vectors, start):
             for i, v in enumerate(vectors)]
 
 
-def worker(backend, ref, vectors, start, batch_size, barrier):
+def worker(backend, ref, vectors, start, batch_size, barrier, backoff):
     result = {"ref": ref, "acknowledged": [], "attempts": [], "conflicts": 0}
+    rng = random.Random(400 + start)
     ds = db.Dataset.open(ref, backend=backend)
     barrier.wait(timeout=120)
     begin = time.perf_counter()
@@ -70,7 +72,9 @@ def worker(backend, ref, vectors, start, batch_size, barrier):
                     result["elapsed_s"] = time.perf_counter() - begin
                     return result
                 # Bounded backoff, no changes to logical records or anchors.
-                time.sleep(0.025 * 2**attempt)
+                delay = (0.025 * 2**attempt if backoff == "short" else
+                         rng.uniform(0.5, 1.0) * min(8.0, 2.0**attempt))
+                time.sleep(delay)
             else:
                 result["attempts"].append({"s": time.perf_counter() - t,
                                            "outcome": "acknowledged"})
@@ -89,6 +93,7 @@ def main():
     ap.add_argument("--writers", type=int, choices=[1, 2, 4, 8, 16], required=True)
     ap.add_argument("--rows", type=int, default=512, help="fixed total, not per writer")
     ap.add_argument("--batch", type=int, default=32)
+    ap.add_argument("--backoff", choices=["short", "jitter"], default="short")
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--verify-report", type=Path, help="read-only reconciliation; no new writes")
     a = ap.parse_args()
@@ -97,7 +102,7 @@ def main():
         raise SystemExit("pinned dump_exact_subset is required BEFORE any writes")
     if a.backend != ENDPOINT and not a.backend.startswith("file://"):
         raise SystemExit("isolated benchmark endpoint required")
-    if not 0 < a.rows <= 4096 or a.rows % a.writers or not 0 < a.batch <= 256:
+    if not 0 < a.rows <= 4096 or a.rows % a.writers or not 0 < a.batch <= 512:
         raise SystemExit("invalid bounded workload")
     with np.load(a.vectors, allow_pickle=False) as z:
         vectors = np.asarray(z[f"{FIELD}__vecs"], dtype="<f4")[:a.rows].copy()
@@ -128,6 +133,7 @@ def main():
                       .add_scalar_string("payload_sha256"))
             db.Dataset.create(ref, schema, backend=a.backend)
         report = {"tag": tag, "mode": a.mode, "writers": a.writers, "refs": refs,
+                  "batch_size": a.batch, "backoff": a.backoff, "attempt_limit": 5,
                   "payload_file_sha256": payload_hash,
                   "logical_vector_bytes": vectors.nbytes, "http_counts": "not measured"}
         a.out.write_text(json.dumps(report, indent=2))
@@ -139,7 +145,7 @@ def main():
                 size = a.rows // a.writers
                 jobs = [pool.submit(worker, a.backend, refs[i if a.mode == "independent" else 0],
                                     vectors[i * size:(i + 1) * size], i * size,
-                                    a.batch, barrier) for i in range(a.writers)]
+                                    a.batch, barrier, a.backoff) for i in range(a.writers)]
                 report["workers"] = [job.result() for job in jobs]
         report["wall_s_including_startup"] = time.perf_counter() - begin
     report["exact_reader_source"] = "python-v0.0.14:f0d6ac5efd0db17618df24d64e22b1156fb45cac"

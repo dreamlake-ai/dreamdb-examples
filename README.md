@@ -11,6 +11,7 @@ package, or a collection of production-ready products.
 |---|---|---|
 | Record parallel simulations, inspect episodes and play back physical state | [Simulation recorder and playback](mjlab-reference/README.md) | Validated reference: bounded mjlab capture, playback, PPO integration and window reads; not a large-scale recorder |
 | Feed stored images, sensors and actions into training | [Multimodal training reader](multimodal-training/README.md) | Validated reference: real capture/read/train runs; optional performance experiments, not a generic streaming trainer |
+| Ingest real egocentric video and measure semantic search and concurrent writes | [Egocentric-100K experiment](egocentric-search/README.md) | Experimental: bounded real S3/Slurm pilot; not a full-corpus or production throughput claim |
 | Retrieve scene images by camera pose | [LLFF + DreamDB](llff-dreamdb/README.md) | Legacy/unverified against the current SDK; uses the old `dreamdb_dataset` API |
 | Compare that retrieval workflow with another store | [LLFF + LanceDB](llff-lancedb/README.md) | Companion comparison, not a DreamDB application; current dependencies not revalidated |
 | Convert local scenes for desktop viewing and comparison | [LLFF + Rerun](llff-rerun/README.md) | Companion: local LLFF → Rerun/LanceDB, no DreamDB reader; current dependencies not revalidated |

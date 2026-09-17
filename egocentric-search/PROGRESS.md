@@ -19,22 +19,75 @@ Issue: dreamlake-ai/dreamdb-core#400. Semantic search only; no lexical index.
 - Existing branch merge integration rejected the second branch after merging
   the first (different exact parents). Consolidation remains unresolved.
 
-## Running / pending
+## Setup and remaining scope
 
 - Slurm jobs 147820/147821 failed before Python/data operations: unavailable uv,
   then snap-specific ELF interpreter. Standalone official uv 0.12.6 archive
   checksum verified. Runtime job 147823 passed on RTX5090 with torch 2.9.1+cu128
   and torchvision 0.24.1+cu128. One srun probe (147822) failed step creation;
   sbatch is the working launch path. These are setup findings, not DB failures.
-- Bounded real pilot resubmitted as **147824**. Completion not established.
-- `write_stress.py` implemented, not run with real data yet. First fixed workload
-  is 512 vectors / 32 per commit, each explicit level 1/2/4/8/16; no automatic
-  escalation. Independent-Ref and same-Ref results are separate. Fresh readers
-  compare exact vectors, digests and anchors; ambiguous outcomes stop.
 - Video-payload concurrency and connector-level HTTP counters are still pending.
   Application phase timing is not backend traffic measurement.
 
-No throughput, saturation, recall or request-minimality claim is established.
+## Real pilot and first write case
+
+147824 completed eight units, 58 clips and 10,440 vectors, no skips. The ingest
+loop took 564.807 s: catalogue/acquisition 230.388, transcode 168.206,
+decode/sample 25.086, encode 6.267, media append/commit 132.678. Calibration
+took 1.466 s and vector publication 4.781 s. These phase timers are not HTTP
+counters. Media readback passed for 728,331,965 original bytes and 1,316,517,665
+preview bytes (39.116 s). Preview is larger here, not a storage saving.
+
+Tokenization initially failed for a missing SentencePiece dependency after media
+readback. Read-only 147825 resumed against unchanged tip
+`dztstcp2xjy33x4jvclqsdd67oejdoa7rjm55cbjvzz3kxx64rrpe`: four semantic prompts,
+two passes, ten results each; same anchors/order across passes. Not relevance proof.
+
+147826 committed 512 real vectors in 16 batches (32/batch); 18.891 s worker time,
+19.237 s including process startup. Its first readback incorrectly compared the
+ordinary Python scan's RaBitQ reconstruction to original f32. This was an oracle
+API-selection error, not established data corruption. The released source
+explicitly decodes compressed bytes on ordinary scans, even with rerank enabled.
+
+Reused existing `dump_exact_subset` compiled from **python-v0.0.14 / f0d6ac5**
+(Slurm build 147827). Read-only reconciliation 147829 passed the original 512
+committed vectors, anchors and digests; no data was rewritten. The workload now
+uses scalar identity scans plus this exact-sidecar reader and still requires
+every acknowledged vector, not the CLI's looser missing-subset threshold.
+
+Optimized ingest 147828 passed with the SAME input selection and encoding
+parameters, one-shard prefetch and 128 MiB logical media batches. Loop time was
+365.632 s, versus 564.807 s: 1.545x in this observed pair. Phase times were
+76.145 s catalogue wait, 168.201 transcode, 25.132 decode/sample, 5.425 encode,
+88.534 media append, with 22 append calls instead of the baseline per-clip 58.
+These are SDK calls, not HTTP requests. Comparison job 147831 checked all 10,440
+anchors and vector payloads byte-for-byte; no differences. Both runs checked
+original and preview digests. Network/cache equivalence was not controlled.
+
+Write staircase 147830 ran after 147828, without overlapping timed ingest:
+
+| Independent Ref writers | 1 | 2 | 4 | 8 | 16 |
+| --- | --- | --- | --- | --- | --- |
+| Wall seconds including startup | 20.620 | 10.638 | 5.740 | 3.465 | 3.083 |
+
+All five cases acknowledged and exactly reconciled all 512 real vectors with
+zero conflicts. Each fresh Dataset has a fresh Genesis/timeline; this is not
+just replaying already-present immutable paths. Creation and readback are
+outside these wall times. The workload is small, not sustained saturation.
+
+Same-Ref one-writer passed (20.602 s). Same-Ref two-writer stopped: one writer
+acknowledged 256, the other exhausted five explicit conflicts with zero
+acknowledgements; all acknowledged records reconciled, readback issues empty.
+The original short-backoff strategy was NOT advanced to 4/8/16 or relabelled
+successful. A separate seconds-scale jitter strategy retains the five-attempt
+cap; tune job 147834 also measures single-writer batches 32/128/512.
+
+Pipeline 147833 additionally overlaps one next preview with current encoding
+and append. It is in progress; tune 147834 depends on its successful completion.
+The earlier queued pipeline 147832 was cancelled after its failed dependency,
+before execution. No result is attributed to that job.
+
+No saturation, recall or request-minimality claim is established.
 No production Ref, old dataset, ACL, GC or public package was changed. No CI run.
 
 ## Resumable state

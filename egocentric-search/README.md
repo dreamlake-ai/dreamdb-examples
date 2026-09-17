@@ -1,6 +1,6 @@
 # Egocentric-100K semantic-search and concurrent-write benchmark
 
-**Experimental; no stress result yet.** Tracks
+**Experimental; bounded real pilot, concurrent-write measurements in progress.** Tracks
 [core #400](https://github.com/dreamlake-ai/dreamdb-core/issues/400).
 
 This application turns permitted real video into frame embeddings and previews,
@@ -10,7 +10,7 @@ queries belong to the application; object storage, snapshots, indexes and Ref
 publication belong to DreamDB.
 
 Read [SPEC.md](SPEC.md) and [PLAN.md](PLAN.md) before running anything.
-Only source metadata selection is currently implemented:
+Start with source metadata selection:
 
 ```sh
 uv run --with huggingface_hub python egocentric-search/select_inputs.py \
@@ -24,8 +24,41 @@ the output for the run; never put credentials in it. No GPU or DreamDB package
 is needed for this metadata-only command. Runtime dependency versions are
 recorded in its output; it does not establish SDK compatibility.
 
-The actual GPU pipeline and query/write runners are pending. Do not infer that
-the commands from another dataset's example operate on this source correctly.
+The GPU adapter/pipeline lives in `dreamlake-ai/dreamlake-ingest`,
+`spaces/ego100k/` (task branch `feat/ego100k-pilot`, not yet merged). Do not copy
+another dataset's legacy ingest commands. Tested SDK is released dreamdb 0.0.14;
+model/tokenizer and runtime pins are in the adapter. This example owns the
+workload, comparisons and results, not a second ingest engine.
+
+See [PROGRESS.md](PROGRESS.md) for the current measured scope. The first real
+run stores 58 clips and 10,440 vectors, not the full 100K-hour corpus. Its source
+and preview bytes were read back and checked; semantic query probes pass.
+
+`write_stress.py` runs one explicit concurrency level using actual precomputed
+vectors. It needs Python 3.12, dreamdb 0.0.14, NumPy, S3 credentials scoped to an
+isolated bucket, the pilot's vector shard/calibration file, and the existing
+`dump_exact_subset` binary compiled from core `python-v0.0.14` for exact readback:
+
+```sh
+export DDB_EXACT_READER=/path/to/pinned/dump_exact_subset
+python egocentric-search/write_stress.py \
+  --vectors /path/to/pilot/vecs/0000/0.npz \
+  --calibration /path/to/pilot/calibration.json \
+  --backend "$BENCH_BACKEND" --mode independent --writers 1 \
+  --rows 512 --batch 32 --out /path/to/results/independent-1.json
+```
+
+The script refuses other remote buckets than the task bucket in PLAN.md. To
+adapt it, explicitly replace that isolation guard; do not point at production.
+Success requires fresh-read anchor/digest agreement and exact vector bytes,
+not just append return values. Ordinary Python scans of compressed fields
+return lossy reconstructions, even when rerank is enabled; they are NOT an
+exact-vector export interface. The script uses the existing exact-sidecar CLI,
+not a hand-rolled protocol parser. No lexical index is involved.
+
+Each case creates fresh Refs and retains them for diagnosis. Unknown publish
+outcomes stop; only explicit conflicts have bounded reopen/retry. Request counts
+are not measured yet; phase timings must not be relabelled as wire throughput.
 Use Slurm for compute and the dedicated private S3 bucket recorded in PLAN.md.
 S3 retains both original MP4 bytes and derivative previews, plus embeddings and
 necessary metadata. Preserve original-video bytes and their source identity for
