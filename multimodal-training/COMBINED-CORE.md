@@ -23,7 +23,7 @@ validator or mutation framework; no claim about each patch's separate effect.
 ## Plan
 
 1. On a Slurm worker, build two private wheels with the same installed
-   Rust 1.98.1 toolchain, maturin 1.9.6, Python 3.12 and unchanged release
+   Rust 1.98.1 toolchain, private maturin 1.9.6 / pip 25.2, Python 3.12 and unchanged release
    profile (opt-level 3, fat LTO, one codegen unit, overflow checks enabled).
    Record source and wheel hashes and build durations. A shared task-local
    target cache reduces build work; neither build duration is a benchmark.
