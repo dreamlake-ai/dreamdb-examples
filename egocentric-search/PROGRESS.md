@@ -5,6 +5,13 @@ Issue: dreamlake-ai/dreamdb-core#400. Semantic search only; no lexical index.
 Current measured summary: [RESULTS.md](RESULTS.md). Bounded cloud jobs are
 complete; this is not closure of the full-scale/request-accounting work.
 
+Latest continuation: [PATCHED-RESULTS.md](PATCHED-RESULTS.md). Original-only
+VideoItem publication/range/decode passes on two real clips. Patched same-Ref
+1/2 writers pass; 4 writers STOP on bounded CAS retry exhaustion, all 384
+acknowledged records exactly reconciled, no unknown error. 8/16 not attempted.
+This supersedes the "no patched remote rerun" status below, not its historical
+measurements. Full source-frame embedding ingest and HTTP accounting remain open.
+
 ## What is established
 
 - The new private task bucket exists, with public access blocked. Source/model
