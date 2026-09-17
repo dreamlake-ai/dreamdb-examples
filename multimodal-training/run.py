@@ -225,6 +225,7 @@ def observe_reads(reader, root):
 
 def train(root):
     import torch
+    from network import make_model
     from torch import nn
 
     torch.manual_seed(71)
@@ -237,26 +238,8 @@ def train(root):
     assert training and validation
     assert not ({r[0] for r in training} & {r[0] for r in validation})
 
-    class Model(nn.Module):
-        def __init__(self):
-            super().__init__()
-            self.image = nn.Sequential(
-                nn.Conv2d(12, 8, 5, stride=2),
-                nn.ReLU(),
-                nn.Conv2d(8, 16, 3, stride=2),
-                nn.ReLU(),
-                nn.AdaptiveAvgPool2d(1),
-                nn.Flatten(),
-            )
-            self.head = nn.Sequential(
-                nn.Linear(16 + 4 * reader.metadata["sensor_dim"], 32), nn.ReLU(), nn.Linear(32, 1)
-            )
-
-        def forward(self, images, sensors):
-            return self.head(torch.cat([self.image(images), sensors.flatten(1)], dim=1))
-
     device = "cuda:0"
-    model = Model().to(device)
+    model = make_model(reader.metadata["sensor_dim"]).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
     initial = [p.detach().clone() for p in model.parameters()]
     load_seconds = compute_seconds = 0.0

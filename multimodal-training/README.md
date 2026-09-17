@@ -68,3 +68,50 @@ production recommendation is inferred from this fixture.
 This first slice composes existing materializing range calls into bounded pages.
 Generic lazy multi-modality streaming remains a distinct core capability; neither
 the page size nor this small success proves billion-row memory behavior.
+
+## Training-ready inputs: two delivery stages
+
+[STAGES.md](STAGES.md) defines the next slice ([issue #8](https://github.com/dreamlake-ai/dreamdb-examples/issues/8)).
+It moves PNG decode, float conversion, normalization and NCHW window construction
+into an explicit, reusable upstream materialization. No cost disappears: four-frame
+float32 windows occupy substantially more bytes than the compressed source.
+The first real two-stage run passed; see [STAGES-RESULTS.md](STAGES-RESULTS.md)
+for the measured preparation cost, 47.8x artifact expansion and local input timing.
+
+```sh
+# CPU check of materialize → byte delivery → mmap:
+.venv/bin/python -B pipeline.py preflight
+
+# Inside the same bounded Slurm allocation as the real run:
+python -B -u pipeline.py all
+```
+
+The coordinator runs capture, the original PNG-based read/train path, then:
+
+```sh
+python -B -u pipeline.py prepare /task/capture     # upstream build → ready/
+python -B -u pipeline.py deliver /task/capture     # local byte-copy + digest → delivered/
+python -B -u pipeline.py train-local /task/capture # only delivered/ is needed
+```
+
+`prepare` needs that directory's backend and receipt. Both output directories must
+be new; there is no resume/overwrite or cache replacement policy in this reference.
+`deliver` is a local transport baseline, not a MinIO/S3 downloader or a network
+benchmark. The design makes those transports byte-only; remote speed is not this
+slice's priority. The ready manifest is copied last after all tensor files verify.
+This is application completion, not an fsync crash-durability guarantee.
+
+`train-local` imports no DreamDB connector or image decoder and needs neither the
+original database nor capture witnesses. It maps immutable float32 arrays, gathers
+requested samples straight into a reusable pinned host batch and transfers them
+to a reusable GPU batch. It synchronizes a CUDA completion event before declaring
+inputs ready; no hidden normalize/transpose in the loop. Arbitrary sample shuffle
+still needs gathering and host-to-device copies. No async prefetch/compute overlap
+or GPU-direct storage is claimed.
+
+The acceptance-only `verify-local` mode also checks all ready tensors against
+capture witnesses, requires the original source path to be absent, and checks one
+completed device copy exactly. `pipeline.py all` runs it after renaming its own
+temporary source, then cleans the entire task directory. The witness check warms
+file pages; these measurements are not cold-storage or theoretical memory limits.
+Use plain `train-local` for independent local-only consumption without witnesses.
