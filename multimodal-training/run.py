@@ -20,7 +20,7 @@ from data import SIZE, Reader, Stats, Writer, png
 ENVS, STEPS, EPISODES = 8, 16, 2
 
 
-def capture(root):
+def capture(root, *, envs=ENVS, steps=STEPS, episodes=EPISODES):
     import importlib.metadata
 
     import mujoco
@@ -31,10 +31,10 @@ def capture(root):
 
     wp.config.kernel_cache_dir = str(root / "cache" / "warp")
     cfg = cartpole_balance_env_cfg()
-    cfg.scene.num_envs = ENVS
+    cfg.scene.num_envs = envs
     cfg.auto_reset = False
     cfg.seed = 71
-    cfg.episode_length_s = STEPS * cfg.decimation * cfg.sim.mujoco.timestep
+    cfg.episode_length_s = steps * cfg.decimation * cfg.sim.mujoco.timestep
     for group in cfg.observations.values():
         group.enable_corruption = False
     env = ManagerBasedRlEnv(cfg, device="cuda:0")
@@ -63,6 +63,7 @@ def capture(root):
             "task": "Mjlab-Cartpole-Balance",
             "control_dt": env.step_dt,
             "seed": 71,
+            "capture_shape": {"envs": envs, "steps": steps, "episodes": episodes},
             "camera": mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_CAMERA, camera),
             "versions": {
                 k: importlib.metadata.version(k)
@@ -80,9 +81,9 @@ def capture(root):
             return tensor.detach().cpu().numpy().copy()
 
         with torch.inference_mode():
-            for episode in range(EPISODES):
+            for episode in range(episodes):
                 env.reset(seed=71 + episode)
-                for step in range(STEPS):
+                for step in range(steps):
                     qpos, qvel, times = (
                         cpu(env.sim.data.qpos),
                         cpu(env.sim.data.qvel),
@@ -102,7 +103,7 @@ def capture(root):
                         cpu(env.sim.data.mocap_quat),
                     )
                     frames = []
-                    for i in range(ENVS):
+                    for i in range(envs):
                         mujoco.mj_resetData(model, render_state)
                         render_state.qpos[:] = qpos[i]
                         render_state.qvel[:] = qvel[i]
@@ -116,13 +117,13 @@ def capture(root):
                         torch.from_numpy(action).to(env.device)
                     )
                     term, trunc = cpu(terminated), cpu(truncated)
-                    if step < STEPS - 1 and (term | trunc).any():
+                    if step < steps - 1 and (term | trunc).any():
                         raise ValueError(
                             "unexpected early terminal; refuse to fabricate full episodes"
                         )
-                    if step == STEPS - 1 and not (term | trunc).all():
+                    if step == steps - 1 and not (term | trunc).all():
                         raise ValueError("capture prefix not complete")
-                    for i in range(ENVS):
+                    for i in range(envs):
                         pending.append(
                             {
                                 "env_id": i,

@@ -74,6 +74,8 @@ class Stats:
     page_hits: int = 0
     page_misses: int = 0
     page_evictions: int = 0
+    selected_records: int = 0
+    selected_fetched_bytes: int = 0
 
 
 class Reader:
@@ -195,6 +197,7 @@ class Reader:
             selections.append([row["_anchor"] for row in rows])
         wanted = {anchor for selection in selections for anchor in selection}
         stats = Stats()
+        stats.selected_records = len(wanted)
         stored = {}
         for anchor in sorted(wanted):
             if anchor in self.cache:
@@ -230,6 +233,9 @@ class Reader:
                     ):
                         raise ValueError("invalid exact training array")
                 stats.decoded_frames += 1
+                # Encoded bytes of selected records consumed from a read page,
+                # including page-cache hits, excluding decoded-record cache hits.
+                stats.selected_fetched_bytes += len(row["image"]) + sensor.nbytes + action.nbytes
                 stored[anchor] = (pixels, sensor, action)
                 stats.decode_seconds += time.perf_counter() - started
                 size = sum(v.nbytes for v in stored[anchor])
