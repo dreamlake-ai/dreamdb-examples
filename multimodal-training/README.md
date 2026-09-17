@@ -69,6 +69,21 @@ This first slice composes existing materializing range calls into bounded pages.
 Generic lazy multi-modality streaming remains a distinct core capability; neither
 the page size nor this small success proves billion-row memory behavior.
 
+## On-demand inputs without a training-ready artifact
+
+[ONDEMAND.md](ONDEMAND.md) specifies the separate issue #12 experiment: same raw
+PNG/sensor snapshot and task-time conversion, serial versus one spawned producer
+with two queued batches. It does not assume future training formats at ingestion.
+The earlier no-prefetch statement describes `run.py`, not this optional experiment.
+The real paired run passed input checks but showed only small loop savings;
+see [ONDEMAND-RESULTS.md](ONDEMAND-RESULTS.md).
+
+Use `ondemand.slurm` from an isolated directory containing `source/` (this directory)
+and `sdk/` (private DreamDB installation), adjusting its cluster/runtime paths.
+It captures once then runs serial/prefetch/prefetch/serial in separate processes.
+The script retains its task directory for results; remove that exact directory
+after recording conclusions. No core changes or remote transfer benchmark.
+
 ## Training-ready inputs: two delivery stages
 
 [STAGES.md](STAGES.md) defines the next slice ([issue #8](https://github.com/dreamlake-ai/dreamdb-examples/issues/8)).
