@@ -1,7 +1,10 @@
 # #400: blocking implementation follow-up (2026-09-17)
 
-Local, unpublished core changes; base `19665f061c6077c142676b4718f47fe42b286d68`.
-This is not a new PyPI release or a new S3 benchmark.
+Merged via [PR #401](https://github.com/dreamlake-ai/dreamdb-core/pull/401)
+at `0ec901f0ada7050a05ec689b137c1e87e6741139`; all 14 PR checks passed.
+Base was `19665f061c6077c142676b4718f47fe42b286d68`. This is not a new
+PyPI release or a new S3 benchmark. The commit IDs below name the original
+local changes; the PR combined them (including cherry-picked equivalents).
 
 ## Changes and direct evidence
 

@@ -166,3 +166,10 @@ and exact scalar readback; Python VideoItem schema/publication is implemented
 and its installed-wheel selection passes (389 passed, 1 skipped).
 These supersede the local implementation gaps, not the earlier S3 measurements.
 No patched remote rerun, formal bound testbox verdict, CI or package release yet.
+
+Follow-up: the three fixes were combined in core PR #401 and merged into main
+as `0ec901f0ada7050a05ec689b137c1e87e6741139`, after all 14 PR checks passed.
+This supersedes the preceding local-only/CI-pending status, not the remote-run
+or package-release limitations. Issue #400 remains open. The completed core
+worktrees ddb-400-video, ddb-400-merge and ddb-400-cas can now be removed;
+unfinished ingest/example worktrees remain for segmented-pilot integration.
