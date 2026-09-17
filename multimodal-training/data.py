@@ -80,7 +80,10 @@ class Stats:
 
 class Reader:
     def __init__(self, backend, receipt, *, page_rows=32, max_scan_rows=4096, cache_bytes=0,
-                 page_cache_bytes=0):
+                 page_cache_bytes=0, read_policy="pages"):
+        if read_policy not in ("pages", "exact"):
+            raise ValueError("read_policy must be pages or exact")
+        self.read_policy = read_policy
         if type(cache_bytes) is not int or cache_bytes < 0:
             raise ValueError("nonnegative cache byte budget required")
         self.cache_budget = cache_bytes
@@ -206,12 +209,20 @@ class Reader:
                 stats.cache_hits += 1
         missing = wanted - stored.keys()
         stats.cache_misses = len(missing)
-        pages = sorted({anchor // self.page_rows for anchor in missing})
-        for page in pages:
+        if self.read_policy == "exact":
+            ranges = []
+            for anchor in sorted(missing):
+                if ranges and anchor == ranges[-1][1] and anchor - ranges[-1][0] < self.page_rows:
+                    ranges[-1] = (ranges[-1][0], anchor + 1)
+                else:
+                    ranges.append((anchor, anchor + 1))
+        else:
+            pages = sorted({anchor // self.page_rows for anchor in missing})
+            ranges = [(page * self.page_rows, min((page + 1) * self.page_rows, self.end))
+                      for page in pages]
+        for start, stop in ranges:
             started = time.perf_counter()
-            rows = self._read(
-                PAYLOAD, page * self.page_rows, min((page + 1) * self.page_rows, self.end), stats
-            )
+            rows = self._read(PAYLOAD, start, stop, stats)
             stats.read_seconds += time.perf_counter() - started
             for row in rows:
                 anchor = row["_anchor"]
