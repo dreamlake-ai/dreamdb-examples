@@ -70,15 +70,25 @@ class Stats:
     cache_hits: int = 0
     cache_misses: int = 0
     cache_evictions: int = 0
+    sdk_seconds: float = 0.0
+    page_hits: int = 0
+    page_misses: int = 0
+    page_evictions: int = 0
 
 
 class Reader:
-    def __init__(self, backend, receipt, *, page_rows=32, max_scan_rows=4096, cache_bytes=0):
+    def __init__(self, backend, receipt, *, page_rows=32, max_scan_rows=4096, cache_bytes=0,
+                 page_cache_bytes=0):
         if type(cache_bytes) is not int or cache_bytes < 0:
             raise ValueError("nonnegative cache byte budget required")
         self.cache_budget = cache_bytes
         self.cache = OrderedDict()
         self.cache_bytes = self.cache_peak = 0
+        if type(page_cache_bytes) is not int or page_cache_bytes < 0:
+            raise ValueError("nonnegative page-cache budget required")
+        self.page_budget = page_cache_bytes
+        self.page_cache = OrderedDict()
+        self.page_bytes = self.page_peak = 0
         if type(page_rows) is not int or not 1 <= page_rows <= 256:
             raise ValueError("page_rows must be in [1,256]")
         self.end = receipt["end_anchor"]
@@ -124,11 +134,22 @@ class Reader:
         self.index_stats = stats
 
     def _read(self, fields, start, stop, stats):
+        key = (tuple(fields), start, stop)
+        cacheable = self.page_budget and fields == PAYLOAD
+        if cacheable and key in self.page_cache:
+            stats.page_hits += 1
+            self.page_cache.move_to_end(key)
+            return self.page_cache[key][0]
+        if cacheable:
+            stats.page_misses += 1
         stats.sdk_calls += 1
         rows = []
-        for batch in self.ds.iter_all_batches(
+        started = time.perf_counter()
+        batches = self.ds.iter_all_batches(
             fields=fields, start_ns=start, end_ns=stop, batch_size=self.page_rows
-        ):
+        )
+        stats.sdk_seconds += time.perf_counter() - started
+        for batch in batches:
             for i, anchor in enumerate(batch["_time_anchors"]):
                 if not start <= anchor < stop:
                     raise ValueError("out-of-range public read")
@@ -142,6 +163,23 @@ class Reader:
                         stats.payload_bytes += value.nbytes
                 rows.append(row)
         stats.returned_rows += len(rows)
+        if cacheable:
+            size = sum(8 + sum(len(v) if isinstance(v, (bytes, bytearray)) else
+                              v.nbytes if isinstance(v, np.ndarray) else 0
+                              for name, v in row.items() if name != "_anchor")
+                       for row in rows)
+            if size <= self.page_budget:
+                while self.page_bytes + size > self.page_budget:
+                    _, (_, evicted_size) = self.page_cache.popitem(last=False)
+                    self.page_bytes -= evicted_size
+                    stats.page_evictions += 1
+                owned = [{name: v.copy() if isinstance(v, np.ndarray) else
+                          bytes(v) if isinstance(v, bytearray) else v
+                          for name, v in row.items()} for row in rows]
+                self.page_cache[key] = (owned, size)
+                self.page_bytes += size
+                self.page_peak = max(self.page_peak, self.page_bytes)
+                assert self.page_bytes <= self.page_budget
         return rows
 
     def batch(self, requests):
