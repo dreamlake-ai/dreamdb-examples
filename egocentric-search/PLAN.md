@@ -2,6 +2,29 @@
 
 Issue -> workload spec -> implementation plan -> bounded execution, per #400.
 
+## Patched bounded continuation (2026-09-17)
+
+Core is pinned to main `0df51db7b2d2ae51ae219cb53a2936e91926e98e`
+(#401 plus #399/#396). Build a private wheel and the existing exact-reader CLI
+on Slurm; do not publish packages or reuse the old package label as provenance.
+First check two retained real clips from pinned baseline `dztstcp2…` in a fresh
+`ego100k-original-smoke-<job>` Ref: stream-copy all source streams, per-item
+init, publish/reopen, full fragment hashes and encoded-stream/decoded-frame
+comparison, then a decodable interior range. This is not browser playback.
+No HF re-download, preview, codec conversion or full-corpus ingest in this step.
+
+Then reuse the original 512 actual vectors and calibration for the same-Ref
+1/2/4/8/16 staircase, batch 32, existing five-attempt jitter policy. Reconcile
+all acknowledged anchors/digests/exact vectors through a fresh reader. Stop on
+the first failed level; do not silently increase retries to make 16 writers pass.
+Run sequentially, at most 8 CPUs / 16 GiB / 30 minutes, no GPU allocation;
+the separate build has a 40-minute limit. No production Ref or old object changes.
+API phase timings remain distinct from unmeasured wire-level request counts.
+
+The opt-in `video-item-original` adapter uses source frames and a new embed spec;
+preview-derived vectors are not an equivalence baseline. Its full bounded GPU
+pilot remains subsequent work, after the small real media check passes.
+
 ## Superseding media decision (2026-09-17)
 
 The next run must use a fresh Ref: source HEVC video only, stream-copy

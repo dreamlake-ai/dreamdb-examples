@@ -6,6 +6,7 @@ Unknown outcomes stop the workload; they are not retried as if known conflicts.
 import argparse
 import concurrent.futures
 import hashlib
+import importlib.metadata
 import json
 import multiprocessing as mp
 import os
@@ -133,6 +134,8 @@ def main():
                       .add_scalar_string("payload_sha256"))
             db.Dataset.create(ref, schema, backend=a.backend)
         report = {"tag": tag, "mode": a.mode, "writers": a.writers, "refs": refs,
+                  "sdk_version": importlib.metadata.version("dreamdb"),
+                  "core_revision": os.environ.get("DREAMDB_BUILD_REVISION", "released-0.0.14"),
                   "batch_size": a.batch, "backoff": a.backoff, "attempt_limit": 5,
                   "payload_file_sha256": payload_hash,
                   "logical_vector_bytes": vectors.nbytes, "http_counts": "not measured"}
@@ -148,7 +151,8 @@ def main():
                                     a.batch, barrier, a.backoff) for i in range(a.writers)]
                 report["workers"] = [job.result() for job in jobs]
         report["wall_s_including_startup"] = time.perf_counter() - begin
-    report["exact_reader_source"] = "python-v0.0.14:f0d6ac5efd0db17618df24d64e22b1156fb45cac"
+    report["exact_reader_source"] = os.environ.get("DDB_EXACT_READER_REVISION",
+        "python-v0.0.14:f0d6ac5efd0db17618df24d64e22b1156fb45cac")
     # Persist outcomes before validation so a failing read never erases acks.
     a.out.write_text(json.dumps(report, indent=2))
     issues = []
