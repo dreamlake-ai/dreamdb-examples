@@ -24,7 +24,7 @@ for variant in baseline combined; do
     wheels=("$task_root/wheel-$variant/"*.whl)
     test "${#wheels[@]}" -eq 1
     sha256sum "${wheels[0]}"
-    python3 -m pip install --disable-pip-version-check --no-deps \
+    PYTHONPATH="$task_root/tools" python3 -m pip install --disable-pip-version-check --no-deps \
         --target "$task_root/sdk-$variant" "${wheels[0]}"
     echo "BUILD_END $variant $(date -u +%FT%TZ)"
 done
