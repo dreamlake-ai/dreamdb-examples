@@ -69,6 +69,17 @@ Specify whether bytes count logical payload, encoded data or actual traffic.
    detect duplicates and unexpected/missing records. Unknown publication outcomes
    must be reconciled before retry to avoid counting duplicate writes as progress.
 
+Initial vector-only case (`write_stress.py`): fixed total 512 real precomputed
+vectors, 32 records/commit, up to 16 processes, at most 5 attempts per batch.
+Only explicit SDK PublishConflict is retryable after reopening; unknown outcomes
+stop and are included in fresh-reader reconciliation, not blindly resubmitted.
+Every concurrency/mode case uses fresh Refs and the same selected real payloads.
+Readback checks the exact vector AND its digest, not merely a count or marker.
+No lexical field/index is created. Each level is explicitly launched; the script
+does not automatically escalate or consolidate. Video-bearing writes are a
+separate payload case, not something this vector-only result proves. Request
+counts remain unmeasured until actual connector instrumentation is available.
+
 Read and write baselines run separately first. Mixed read/write is a later matrix
 after isolated results, not a hidden source of interference. S3 is the measured
 storage backend, not HF. Private dataset permissions remain intact.

@@ -44,6 +44,29 @@ ingest engine. Required SDK/media/source adaptations precede runtime claims.
    preserve pending work. Retain S3 originals and previews for future experiments;
    remote data deletion requires separate direction, not automatic task cleanup.
 
-No stress throughput result, SDK runtime qualification, source-video download or
-Slurm compute job has been completed yet. A bucket and a successful auth check
-are prerequisites, not benchmark success.
+## Runtime preparation (2026-09-17)
+
+The ingest worktree now has an opt-in whole-clip original/preview path and the
+bounded ego100k adapter. Local native preflight: 244 unit tests pass, one skips;
+a real generated-video append/reopen test passes with dreamdb 0.0.14 and exact
+original-byte comparison. This is storage wiring evidence, not real-data scale.
+
+Existing integration also exposed a merge incompatibility: the first branch
+merged, the second was rejected because layers named different exact parents.
+Do not retry the entire merge, discard branch data, or conflate branch-local
+commit success with consolidated visibility. Independent-Ref and same-Ref
+tests remain separate; consolidation is a separately reported result.
+
+Only semantic search is in scope. No BM25 build or lexical-query tests.
+The pilot records acquisition/catalogue, transcode, sample/decode, encoder and
+SDK append/commit time separately. These are application phase times, NOT HTTP
+request counts or backend wire throughput. Real connector counters remain to
+be implemented before request-count claims.
+
+High-concurrency testing is a DreamDB product test, not just ingest scheduling:
+1/2/4/8/16 independent writer processes; fresh isolated Refs for every case;
+same-Ref CAS conflict classification/reconciliation is a distinct workload.
+Use actual precomputed pilot data, stable disjoint anchors and fresh-reader
+verification of acknowledged contents. Stop escalation on missing/changed
+acknowledged data or unclassified commit outcomes. Fix product defects at their
+source, not by relaxing the readback assertion. No stress result exists yet.
