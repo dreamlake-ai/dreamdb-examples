@@ -1,5 +1,19 @@
 # mjlab / DreamDB reference prototype
 
+[Application catalog](../README.md) · [Contribution guide](../CONTRIBUTING.md)
+
+| Goal | Entry point | Requirements |
+|---|---|---|
+| Learn the storage model | `check_storage.py`, `store.py` | CPU, `requirements-storage.txt`; includes a tiny MuJoCo asset check |
+| Capture parallel simulation | `check_capture.py`, `capture.py`, `writer.py` | Compatible Linux/CUDA mjlab runtime |
+| Inspect recorded state | `playback.py` | DreamDB, NumPy, compatible MuJoCo; EGL for render or a display for view |
+| Attach to PPO | `check_training.py`, `training.py` | Capture runtime plus RSL-RL |
+| Select episode/time windows | `windows.py` | DreamDB and NumPy; CPU check also uses the MuJoCo fixture |
+
+For image/sensor-to-training, see [multimodal-training](../multimodal-training/README.md).
+Dependency files pin DreamDB 0.0.13. Private-wheel measurements remain pinned
+experiments even after core changes merge; no package release is implied here.
+
 Status: **bounded capture, independent playback and real PPO integration validated**.
 Recording overhead is measured and remains too high for a large-scale training
 recommendation. This is a reference design, not a production-ready training recorder.
