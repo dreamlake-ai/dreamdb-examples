@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import time
+from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -63,10 +64,21 @@ class Stats:
     returned_rows: int = 0
     payload_bytes: int = 0
     decoded_frames: int = 0
+    read_seconds: float = 0.0
+    decode_seconds: float = 0.0
+    assembly_seconds: float = 0.0
+    cache_hits: int = 0
+    cache_misses: int = 0
+    cache_evictions: int = 0
 
 
 class Reader:
-    def __init__(self, backend, receipt, *, page_rows=32, max_scan_rows=4096):
+    def __init__(self, backend, receipt, *, page_rows=32, max_scan_rows=4096, cache_bytes=0):
+        if type(cache_bytes) is not int or cache_bytes < 0:
+            raise ValueError("nonnegative cache byte budget required")
+        self.cache_budget = cache_bytes
+        self.cache = OrderedDict()
+        self.cache_bytes = self.cache_peak = 0
         if type(page_rows) is not int or not 1 <= page_rows <= 256:
             raise ValueError("page_rows must be in [1,256]")
         self.end = receipt["end_anchor"]
@@ -144,16 +156,27 @@ class Reader:
                 raise ValueError("missing window steps")
             selections.append([row["_anchor"] for row in rows])
         wanted = {anchor for selection in selections for anchor in selection}
-        pages = sorted({anchor // self.page_rows for anchor in wanted})
         stats = Stats()
         stored = {}
+        for anchor in sorted(wanted):
+            if anchor in self.cache:
+                stored[anchor] = self.cache[anchor]
+                self.cache.move_to_end(anchor)
+                stats.cache_hits += 1
+        missing = wanted - stored.keys()
+        stats.cache_misses = len(missing)
+        pages = sorted({anchor // self.page_rows for anchor in missing})
         for page in pages:
-            for row in self._read(
+            started = time.perf_counter()
+            rows = self._read(
                 PAYLOAD, page * self.page_rows, min((page + 1) * self.page_rows, self.end), stats
-            ):
+            )
+            stats.read_seconds += time.perf_counter() - started
+            for row in rows:
                 anchor = row["_anchor"]
-                if anchor not in wanted:
+                if anchor not in missing:
                     continue
+                started = time.perf_counter()
                 if anchor in stored or any(row[f] is None for f in PAYLOAD):
                     raise ValueError("duplicate or missing selected payload")
                 with Image.open(io.BytesIO(row["image"])) as image:
@@ -170,11 +193,26 @@ class Reader:
                         raise ValueError("invalid exact training array")
                 stats.decoded_frames += 1
                 stored[anchor] = (pixels, sensor, action)
+                stats.decode_seconds += time.perf_counter() - started
+                size = sum(v.nbytes for v in stored[anchor])
+                if self.cache_budget and size <= self.cache_budget:
+                    while self.cache_bytes + size > self.cache_budget:
+                        _, evicted = self.cache.popitem(last=False)
+                        self.cache_bytes -= sum(v.nbytes for v in evicted)
+                        stats.cache_evictions += 1
+                    # Own array storage, not a view retaining a larger SDK buffer.
+                    self.cache[anchor] = tuple(v.copy() for v in stored[anchor])
+                    self.cache_bytes += size
+                    self.cache_peak = max(self.cache_peak, self.cache_bytes)
+                    assert self.cache_bytes <= self.cache_budget
         if stored.keys() != wanted:
             raise ValueError("selected records missing")
-        return {
+        started = time.perf_counter()
+        result = {
             "anchors": np.asarray(selections, dtype=np.int64),
             "images": np.stack([np.stack([stored[a][0] for a in s]) for s in selections]),
             "sensors": np.stack([np.stack([stored[a][1] for a in s]) for s in selections]),
             "targets": np.stack([stored[s[-1]][2] for s in selections]),
-        }, stats
+        }
+        stats.assembly_seconds += time.perf_counter() - started
+        return result, stats

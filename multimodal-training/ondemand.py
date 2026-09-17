@@ -13,9 +13,9 @@ import numpy as np
 from data import Reader
 
 
-def batches(root):
+def batches(root, cache_bytes=0):
     receipt = json.loads((root / "receipt.json").read_text())
-    reader = Reader((root / "backend").as_uri(), receipt)
+    reader = Reader((root / "backend").as_uri(), receipt, cache_bytes=cache_bytes)
     samples = [r for r in reader.samples if r[0][0] < 6]
     rng = np.random.default_rng(71)
     for _ in range(2):
@@ -24,18 +24,21 @@ def batches(root):
             requests = [samples[i] for i in order[offset : offset + 16]]
             started = time.perf_counter()
             raw, stats = reader.batch(requests)
+            converting = time.perf_counter()
             images = np.ascontiguousarray(
                 raw["images"].transpose(0, 1, 4, 2, 3).reshape(-1, 12, 64, 64),
                 dtype=np.float32,
             )
             images *= np.float32(1 / 255)
             raw["images"] = images
-            yield raw, time.perf_counter() - started, vars(stats)
+            measured = dict(vars(stats), transform_seconds=time.perf_counter() - converting,
+                            cache_peak_bytes=reader.cache_peak)
+            yield raw, time.perf_counter() - started, measured
 
 
-def produce(root, queue):
+def produce(root, queue, cache_bytes):
     try:
-        for batch in batches(root):
+        for batch in batches(root, cache_bytes):
             queue.put(("batch", batch))
         queue.put(("done", resource.getrusage(resource.RUSAGE_SELF).ru_maxrss))
     except BaseException:
@@ -66,12 +69,15 @@ def train(root, mode):
     worker = queue = None
     report = dict(mode=mode, wait=0.0, transfer=0.0, compute=0.0, check=0.0,
                   producer_work=0.0, batches=0, sdk_calls=0, decoded_frames=0,
+                  read_seconds=0.0, decode_seconds=0.0, assembly_seconds=0.0,
+                  transform_seconds=0.0, cache_hits=0, cache_misses=0,
+                  cache_evictions=0, cache_peak_bytes=0,
                   worker_rss_kib=None, first_batch=None, max_batch_bytes=0)
     started = time.perf_counter()
-    if mode == "prefetch":
+    if mode in ("prefetch", "cached"):
         ctx = mp.get_context("spawn")
         queue = ctx.Queue(maxsize=2)
-        worker = ctx.Process(target=produce, args=(root, queue))
+        worker = ctx.Process(target=produce, args=(root, queue, 1048576 if mode == "cached" else 0))
         worker.start()
     else:
         iterator = iter(batches(root))
@@ -95,8 +101,11 @@ def train(root, mode):
                 report["first_batch"] = time.perf_counter() - started
             batch, seconds, stats = payload
             report["producer_work"] += seconds
-            for key in ("sdk_calls", "decoded_frames"):
+            for key in ("sdk_calls", "decoded_frames", "read_seconds", "decode_seconds",
+                        "assembly_seconds", "transform_seconds", "cache_hits", "cache_misses",
+                        "cache_evictions"):
                 report[key] += stats[key]
+            report["cache_peak_bytes"] = max(report["cache_peak_bytes"], stats["cache_peak_bytes"])
             report["max_batch_bytes"] = max(report["max_batch_bytes"],
                                            sum(v.nbytes for v in batch.values()))
             t = time.perf_counter()
@@ -142,7 +151,7 @@ def train(root, mode):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("mode", choices=["serial", "prefetch"])
+    parser.add_argument("mode", choices=["serial", "prefetch", "cached"])
     parser.add_argument("directory", type=Path)
     args = parser.parse_args()
     train(args.directory.resolve(), args.mode)
