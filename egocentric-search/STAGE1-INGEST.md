@@ -207,3 +207,59 @@ No replacement GPU job submitted. Retain checkpoint, vectors, TARs and node
 scratch `/tmp/ego100k-stage1-gpu.aaI9nBRd` for recovery of the interrupted unit.
 Resolving this blocker requires choosing a bounded-history/checkpoint contract
 or extending lineage storage; it is not another throughput parameter change.
+
+## Current-SDK resume after #402/#404 (2026-09-18)
+
+The earlier stop is now addressed by the explicit checkpoint APIs, not a larger
+container limit. Latest merged main at qualification was
+`743f72a3d32679bc6a4366ca55689c1fc62e6548` (#402, #404 and #397 included).
+Private core `cd71b1a47ffff63ba0505d360d863ec003b07093` adds ONLY the already
+measured eight-way independent media-leaf writes from `bc77082` to that main.
+Main still writes those leaves serially; silently swapping to unmodified main
+would drop that prior performance change. No optional fragment packing enabled.
+
+Slurm CPU build **148123** produced the pinned wheel (still labelled 0.0.14):
+SHA256 `0f55a836c1d639cd44797d56cfe1560e1971fec2cd946f3bed5011ffa4296097`.
+Package version alone is not provenance. The launcher checks that exact hash,
+installs into task-private dependencies and verifies DreamDB imports from there;
+it no longer installs an old registry SDK first. Source/model/catalogue pins
+are unchanged. 393 Python tests passed / 1 skipped; native media writer
+preflight 8 passed / 1 ignored. Adapter units 246 passed / 1 skipped / 11
+deselected. A local invocation initially used nonexistent `--extra dev`;
+corrected to the existing `--group dev` without changing tests or dependencies.
+
+CPU preflight **148125**, installed same wheel: 3 public file-backed tests PASS
+(0.34 s), including real H.265 publication, receipt-preserving SDK upgrade,
+base checkpoint, corrected-RaBitQ IVF layer + exact sidecars, indexed checkpoint,
+lost-local-receipt recovery, subsequent append and query/media readback. These
+are direct integration preflights, not a new formal testbox verdict.
+
+Before resume, one independent S3 GET returned the 33-byte Ref matching the
+saved tip `dyolslcr64fknyjkbuhtel2ugzfuzcztmazumnbiohnbxnt7etvdo`.
+Adapter **b0a3336** journals the qualified old→new SDK binding only after actual
+tip reconciliation. It cannot change catalogue/model/backend/Ref identity or
+replace the saved tip by guesswork. Base checkpoints run at media-unit boundaries;
+indexed checkpoints can run at vector-chunk boundaries after layer creation.
+Saved plans precede remote publication; unknown ordinary commit outcomes still
+stop, with no new automatic retry policy.
+
+GPU resume **148126**, bos14-node-121 / RTX5090, is RUNNING. Third 2h reservation:
+**6/12 GPU-hours conservatively reserved**, not 6h consumed. Same 1,000 clips,
+no new downloads, no stage-2 expansion. STS expires `2026-09-18T12:18:21Z`;
+process exit does not revoke the session. The launcher verified the new wheel
+and logged its isolated import path. The first checkpoint applied as:
+
+- source: `dyolslcr64fknyjkbuhtel2ugzfuzcztmazumnbiohnbxnt7etvdo`
+- new root: `dzc5ehjflpqk34xub27kaxpgapct5xd4jj2wnjzq26hu63ykctphu`
+- archive tag: `ego100k-dyolslcr64fknyjkbuhtel2ugzfuzcztmazumnbiohnbxnt7etvdo`
+
+233 media receipts / 232 local vector shards were retained at this boundary.
+Vector layer publication and final stage readback are still pending. Log:
+`/home/tom/ddb-ego100k-400/logs/stage1-ingest-148126.log`.
+
+Cleanup: the completed new SDK build's 1.9 GiB target, 132 MiB build environment
+and pytest scratch were removed after saving the wheel and exact-read CLI.
+CPU-test node scratch cleanup initially used an incompatible inherited GRES;
+the step was corrected to `--gres=none` (not an ingest failure). Active GPU
+scratch, source TARs, vectors, journal, wheel and unpublished source worktrees
+remain necessary for this running job. No S3 deletion or GC.
