@@ -64,7 +64,8 @@ each attempt conservatively consumes its full 2h allowance (at most six), even
 if it fails early. No automatic resubmission. Temporary STS expiry reported
 `2026-09-18T06:28:07+00:00`; process exit does not revoke that session.
 
-Status at this record: GPU runtime initialized, ingestion running, **not PASS**.
+Status at this record: first **17/1,000** clips have confirmed media + local
+vectors; GPU job running, vector layer not yet published, **not PASS**.
 Source-prepared clips are not media-committed clips, and media-committed clips
 are not published embeddings. `MEDIA_ENCODED` records media + local vectors;
 `VECTORS_COMMITTED` records acknowledged vector layer writes; final result
