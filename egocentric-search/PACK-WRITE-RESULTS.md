@@ -115,12 +115,13 @@ write contention remain open. #397 remains deferred. No S3 deletion or GC.
 
 After jobs ended, task Docker target volume `ddb-video-pack-target` was removed;
 shared Cargo/sccache and unrelated services were left alone. Slurm cleanup
-148018 targets exactly the two comparison scratch directories, failed 4335971
+148018 completed exit 0 (16 seconds), removing the two comparison scratch directories, failed 4335971
 build tree, intermediate/final target and build environments, final pytest
 scratch, and transport archive. Exact successful private wheels and source SHAs
 remain under cluster `core-45a85fb...` / `core-f01fc64...` for reproduction.
-The local transport archive and redundant preflight logs are disposable after
-this summary. Core `/Users/locatino/fortyfive/ddb-video-leaf`, ingest and bench
+The local transport archive and redundant preflight logs were also removed after
+this summary; these are reconstructible artifacts, not unique data. Core
+`/Users/locatino/fortyfive/ddb-video-leaf`, ingest and bench
 worktrees remain because their commits are unpublished and #400 is unfinished.
 No credentials are archived; process exit does not revoke the three-hour STS
 sessions. No S3 objects or test Refs were deleted.
