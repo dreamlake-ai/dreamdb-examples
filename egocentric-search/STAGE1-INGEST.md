@@ -287,3 +287,13 @@ metadata appends 206.730 s, decode/sample 177.485 s, encoder 16.593 s, remux
 above; these are application calls, not HTTP request counts. Vector offset
 remains zero and no final result exists. No additional GPU reservation, input
 download, budget expansion, SDK change, or cleanup of resumable state occurred.
+
+While the separate SDK release was being prepared, 148126 reached
+**MEDIA_COMPLETE: 1,000/1,000 media/local-vector units**. This is not stage
+acceptance: calibration, vector publication and final readback still remain.
+Current-attempt elapsed 3,057.148 s; media calls 885.989 s, metadata appends
+1,058.939 s, decode/sample 841.016 s, encoder 71.244 s, remux 23.708 s. Both
+call counters are 768 (including the previously noted media receipt skip).
+These attempt-only figures exclude earlier attempts; they are neither the total
+ingest cost nor an HTTP request census. Published vector offset remained zero
+at this boundary. The running job's pinned SDK was not upgraded by release #407.
