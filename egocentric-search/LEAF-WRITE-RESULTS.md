@@ -88,8 +88,10 @@ an explicit updated pin, not a silently accepted replacement.
 Small reports are in `/home/tom/ddb-ego100k-400/runs/148011/<run>/original-smoke.json`
 and local `artifacts/ego100k-400/leaf-<run>-148011.json`.
 Private wheels and source commits are retained. Task Docker target and source
-transport archives are removed; remote build and media scratch cleanup uses
-Slurm 148012. Shared caches and all S3 objects/Refs are untouched.
+transport archives are removed; Slurm 148012 confirmed removal of 265 MiB media
+scratch, 1.9 GiB build target and 87 MiB build environment. No jobs remain.
+Shared caches and all S3 objects/Refs are untouched. Redundant local preflight
+logs were removed after retaining the commands and outcomes above.
 
 Core worktree `/Users/locatino/fortyfive/ddb-video-leaf` remains on
 `perf/video-item-leaf-writes`: local committed implementation, not pushed,
