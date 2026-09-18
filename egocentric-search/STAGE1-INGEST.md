@@ -273,3 +273,17 @@ remux 1.394 s. Both call counters are 43; the media counter includes the receipt
 skip for unit 233, so it is NOT 43 new remote publications. No HTTP request count,
 isolated speedup or final throughput is inferred. Published vector offset is
 still zero; calibration, vector publication and final acceptance remain pending.
+
+Next observation in 148126: **404 media receipts and 404 local vector shards**,
+job still RUNNING (12m41s). A further base checkpoint applied to
+`d2b2dyycrlokjrst3wofao7mvgorr4y5tqxkuzielcwsvypxyytru`, and subsequent media
+units completed. This directly exercises another capacity transition during
+ongoing ingestion, not only the initial resume checkpoint. It does not yet
+exercise indexed checkpointing on this S3 corpus.
+
+Durable 400-unit attempt snapshot: elapsed 739.260 s; media calls 194.225 s,
+metadata appends 206.730 s, decode/sample 177.485 s, encoder 16.593 s, remux
+5.234 s. Both call counters are 168, with the same one receipt-skip caveat
+above; these are application calls, not HTTP request counts. Vector offset
+remains zero and no final result exists. No additional GPU reservation, input
+download, budget expansion, SDK change, or cleanup of resumable state occurred.
