@@ -64,8 +64,9 @@ each attempt conservatively consumes its full 2h allowance (at most six), even
 if it fails early. No automatic resubmission. Temporary STS expiry reported
 `2026-09-18T06:28:07+00:00`; process exit does not revoke that session.
 
-Status at this record: first **145/1,000** clips have confirmed media + local
-vectors; GPU job running, vector layer not yet published, **not PASS**.
+Latest status: first **176/1,000** clips have confirmed media + local vectors.
+Initial job 148022 stopped on S3 HTTP 500 at clip 163; resumed job **148027**
+has passed that clip and is running. Vector layer not yet published, **not PASS**.
 Source-prepared clips are not media-committed clips, and media-committed clips
 are not published embeddings. `MEDIA_ENCODED` records media + local vectors;
 `VECTORS_COMMITTED` records acknowledged vector layer writes; final result
@@ -126,3 +127,53 @@ Do not restart this job or rerun completed clips for a comparison. Its existing
 `timings` dictionary records actual aggregate remux/media/decode/encode/metadata
 times in the final result. Reassess with those measurements and later rolling
 windows before authorizing stage 2. Optional packing remains off.
+
+## Actual interruption and reconciled continuation
+
+148022 stopped at the 163rd clip: a media leaf PUT returned S3 HTTP 500
+`InternalError`, request ID `FB6Q4ZWK49NW70D7`. The last completed unit is
+162. This is a failed attempt, not an unchanged-state wait or inferred throttling.
+Its final aggregate phase timings were only in memory and were lost; the earlier
+rolling-window and occupancy observations remain, but cannot fill that gap.
+
+Before resubmission, read the actual S3 Ref (33 bytes) and compared it with the
+durable checkpoint. Both were
+`dzsgcnlsxu4pghrio6kduodgw2fszpaw7gur7ba7hn3mkhyhctxg4`.
+There were 162 media receipts and 162 local vector shards; pending operation
+type was media. No old Ref overwrite, failed-unit success marker, or manual tip
+substitution. The existing resume guard independently checks the tip again.
+
+Resume **148027** with fresh scoped STS (expires 2026-09-18T07:46:07Z), same
+qualified core/wheel/input identity. Second 2h reservation: 4/12 GPU-hours
+conservatively reserved, not 4h actually consumed. Log confirms resume at clip
+163, then progress beyond it; previous 162 units skipped without media replay
+or source redownload. Original source archives remain intact.
+
+Ingest commit a86b40f adds per-attempt telemetry every 25 clip ordinals and at
+unit failure, plus calibration and vector-publication attempt timings. It does
+not change storage contents, the replay guard, or retry limits. Local unit suite
+246 pass / 1 skipped / 9 deselected. No new CI or validation framework.
+
+First persisted sample: total 175 media units, **13 new units in this attempt**:
+
+| Measured operation | Cumulative seconds (13 new clips) |
+|---|---:|
+| Media publication | 18.349 |
+| Metadata append/commit | 20.511 |
+| Decode/sample | 13.304 |
+| GPU encoder call (including transfers/normalization) | 1.336 |
+| Stream-copy remux | 0.329 |
+
+Job elapsed was 71.533s and includes setup/archive checks outside these timers.
+These serial call measurements directly support prioritizing publication and
+decode/encode overlap over adding GPUs. They are not HTTP wire timings, full
+attempt totals, or an estimate for unmeasured remaining clips. A single 500
+interrupting the batch is also a real reliability cost: this turn resumes after
+checking state; no new automatic retry policy is smuggled into the workload.
+
+After clip 163 succeeded in the new job, old node-099 scratch
+`/tmp/ego100k-stage1-gpu.x3RTXcnE` was removed through a short Slurm overlap step.
+Failure log, source TARs, 162 old vector shards and checkpoint remain; no S3
+objects removed. Active scratch is `/tmp/ego100k-stage1-gpu.aaI9nBRd` and must
+remain while 148027 runs. Partial/unreferenced remote objects from the failed
+publication were not deleted or GCed.
