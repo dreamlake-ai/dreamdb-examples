@@ -11,10 +11,12 @@ phased budgets required BEFORE starting scale-up. See
 download this turn. 58 original-only pilot clips remain the completed data
 baseline, not a full-ingest checkpoint. No scale-up job has been submitted.
 Performance experiments below are supporting work, not the primary completion
-metric. Stage 1 approved by the user's “继续”: up to 1,000 new clips, 32 GiB
-source, one GPU / 12 GPU-hours. CPU catalogue job 148019 is downloading and
-hashing fixed non-pilot shards (at most 19,597,281,280 B for all 24 admitted
-shards; stops when 1,000 clips are frozen). This is source preparation, not
+metric. [Stage 1 live status](STAGE1-INGEST.md): 1,000 new sources frozen,
+12,408,995,840 B / 15 verified TARs; GPU ingest job 148022 started, not complete.
+Stage 1 approved by the user's “继续”: up to 1,000 new clips, 32 GiB
+source, one GPU / 12 GPU-hours. CPU catalogue job 148019 completed downloading
+and hashing fixed non-pilot shards (at most 19,597,281,280 B for all 24 admitted
+shards; stopped when 1,000 clips were frozen). This is source preparation, not
 completed ingest. GPU writer targets stable Ref `ego100k-ingest-v1`, one clip
 per checkpoint, private core bc77082. Real file-backed checkpoint preflight
 148020 passes; disposable scratch removed by 148021. No scale-up beyond stage
