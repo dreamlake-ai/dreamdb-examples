@@ -263,3 +263,13 @@ CPU-test node scratch cleanup initially used an incompatible inherited GRES;
 the step was corrected to `--gres=none` (not an ingest failure). Active GPU
 scratch, source TARs, vectors, journal, wheel and unpublished source worktrees
 remain necessary for this running job. No S3 deletion or GC.
+
+Later observation in 148126: **278 completed media/local-vector units**, 279
+media receipts (one next unit between media and vector completion). The failed
+233rd unit has completed; the previous 232 local vector artifacts were reused,
+not regenerated. At the durable 275-unit snapshot, attempt elapsed 269.685 s:
+media calls 43.173 s, metadata appends 42.910 s, decode 44.427 s, encoder 5.250 s,
+remux 1.394 s. Both call counters are 43; the media counter includes the receipt
+skip for unit 233, so it is NOT 43 new remote publications. No HTTP request count,
+isolated speedup or final throughput is inferred. Published vector offset is
+still zero; calibration, vector publication and final acceptance remain pending.
