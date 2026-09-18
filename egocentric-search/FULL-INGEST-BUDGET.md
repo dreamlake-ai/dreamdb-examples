@@ -174,5 +174,7 @@ No Slurm ingest job, S3 mutation or new scale-up spend was initiated this turn.
 Existing pilot/packing evidence retained. The 9.7 MiB source inventory remains
 because it is the proposed full-run input; unfinished ingest/bench worktrees
 remain with local commits. No task build directories or media scratch created.
-Await stage-1 approval and optionally the cluster tariff; the full-corpus goal
-does not imply all later-stage budgets have already been approved.
+Stage 1 was subsequently approved by the user's “继续”. CPU-only source
+acquisition is running as Slurm 148019; no GPU ingest has started at this update.
+The full-corpus goal does not imply later-stage budgets are approved. Actual
+cluster tariff remains unknown.
