@@ -12,7 +12,9 @@ download this turn. 58 original-only pilot clips remain the completed data
 baseline, not a full-ingest checkpoint. No scale-up job has been submitted.
 Performance experiments below are supporting work, not the primary completion
 metric. [Stage 1 live status](STAGE1-INGEST.md): 1,000 new sources frozen,
-12,408,995,840 B / 15 verified TARs; GPU ingest job 148022 started, not complete.
+12,408,995,840 B / 15 verified TARs. GPU job 148022 stopped after 162 clips on
+S3 HTTP 500; Ref/checkpoint equality confirmed before resuming as 148027.
+Latest observed 176 media+local-vector units; vector index not yet published.
 Stage 1 approved by the user's “继续”: up to 1,000 new clips, 32 GiB
 source, one GPU / 12 GPU-hours. CPU catalogue job 148019 completed downloading
 and hashing fixed non-pilot shards (at most 19,597,281,280 B for all 24 admitted
