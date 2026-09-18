@@ -177,3 +177,33 @@ Failure log, source TARs, 162 old vector shards and checkpoint remain; no S3
 objects removed. Active scratch is `/tmp/ego100k-stage1-gpu.aaI9nBRd` and must
 remain while 148027 runs. Partial/unreferenced remote objects from the failed
 publication were not deleted or GCed.
+
+## Resume 148027: deterministic lineage-capacity stop
+
+The resumed attempt stopped during clip 233's metadata append:
+`lineage container is 1049865 bytes, over the 1048576 limit`.
+Checkpoint inspection: 233 acknowledged media receipts, 232 local vector NPZ
+files, pending `metadata`, checkpoint tip
+`dyolslcr64fknyjkbuhtel2ugzfuzcztmazumnbiohnbxnt7etvdo`.
+This is the checkpoint value, not a fresh independent remote-tip verification.
+No stage result/PASS or vector-index publication is claimed.
+
+Persisted attempt telemetry: elapsed 331.921 s; media publication 106.937 s
+(71 commits); metadata append 120.317 s (70 successful commits; timing also
+includes the failed call); decode/sample 75.742 s; encoder 6.596 s; remux
+1.961 s. Counts/times cover this attempt only. This failure is unrelated to
+the preceding attempt's HTTP 500; unchanged resubmission cannot fix it.
+
+Source diagnosis: append.rs replaces each changed active Track with
+DerivedFrom(the published base). Builder closure retains that ancestor chain.
+spec/0002 section 7.2.3 explicitly caps the canonical lineage-v1 container at
+1 MiB and forbids silent paging/truncation. Compact also derives its new Track
+from the replaced version, so ordinary compaction does not reset this growth.
+Increasing metadata batches may delay the cap, not remove the full-corpus
+scaling limit. No cap change, ancestry removal, root replacement, or dataset
+partitioning has been performed or silently authorized by this diagnosis.
+
+No replacement GPU job submitted. Retain checkpoint, vectors, TARs and node
+scratch `/tmp/ego100k-stage1-gpu.aaI9nBRd` for recovery of the interrupted unit.
+Resolving this blocker requires choosing a bounded-history/checkpoint contract
+or extending lineage storage; it is not another throughput parameter change.
