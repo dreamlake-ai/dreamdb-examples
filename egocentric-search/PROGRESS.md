@@ -2,7 +2,14 @@
 
 Issue: dreamlake-ai/dreamdb-core#400. Semantic search only; no lexical index.
 
-Latest optimization: [LEAF-WRITE-RESULTS.md](LEAF-WRITE-RESULTS.md). Candidate
+Latest optimization: [PACK-WRITE-RESULTS.md](PACK-WRITE-RESULTS.md). Opt-in
+fragment packing plus selected adjacent-range coalescing: actual media payload
+objects 44 → 2, same bytes; paired two-clip S3 means publication 1.137 → 0.991 s,
+full read 1.050 → 0.318 s. First-range read 0.208 → 0.254 s: explicit tradeoff,
+default unchanged. All byte/frame/range checks pass. Not total HTTP accounting,
+not corpus-scale throughput; local commits only, no merge/release/CI this round.
+
+Previous optimization: [LEAF-WRITE-RESULTS.md](LEAF-WRITE-RESULTS.md). Candidate
 bc77082 overlaps eight independent fragment writes. Alternating two-real-clip
 S3 runs all passed byte/frame/range checks; mean publication 4.349 → 1.130 s
 (3.85x observed). This reduces latency, not request count; no merge/release yet.
