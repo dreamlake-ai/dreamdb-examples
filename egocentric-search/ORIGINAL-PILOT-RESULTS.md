@@ -68,6 +68,8 @@ Small result: `/home/tom/ddb-ego100k-400/runs/148008/pilot-result.json`, copied 
 `/Users/locatino/fortyfive/artifacts/ego100k-400/original-pilot-148008.json`.
 The run's source-derived vector shards, calibration, and per-item publication
 records remain for subsequent write/read experiments without repeating encoding.
-Task scratch/dependency/model caches are removed after result collection. The
+Cleanup Slurm 148009 confirmed removal of the two exact task scratch directories
+(41 MiB batch dependencies + 1,002 MiB pilot dependencies/model/cache). No jobs
+remain. The 31 MiB run directory is retained for those next experiments. The
 private wheel, exact reader and unfinished task worktrees remain; no S3 deletion
 or GC, no production Ref changes, no package release or CI run.
