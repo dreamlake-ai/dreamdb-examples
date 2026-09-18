@@ -8,7 +8,10 @@ complete; this is not closure of the full-scale/request-accounting work.
 2026-09-18 batching follow-up: [BATCH-RESULTS.md](BATCH-RESULTS.md). Fixed 512
 real vectors, single-writer batch 32/128/512: 26.77/9.89/5.73 seconds;
 four-writer batch 128: 27.31 seconds, six conflicts. All four exactly reconciled.
-The original-only full bounded GPU pilot is being run separately; no result yet.
+The original-only full bounded GPU pilot also passed: 58 clips, 10,440 source-frame
+vectors, zero skips, 58 range checks and eight semantic-query probes. Details:
+[ORIGINAL-PILOT-RESULTS.md](ORIGINAL-PILOT-RESULTS.md). This supersedes the pending
+full source-frame pilot status below. HTTP accounting remains open.
 
 Latest continuation: [PATCHED-RESULTS.md](PATCHED-RESULTS.md). Original-only
 VideoItem publication/range/decode passes on two real clips. Patched same-Ref
