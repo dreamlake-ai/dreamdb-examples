@@ -5,6 +5,11 @@ Issue: dreamlake-ai/dreamdb-core#400. Semantic search only; no lexical index.
 Current measured summary: [RESULTS.md](RESULTS.md). Bounded cloud jobs are
 complete; this is not closure of the full-scale/request-accounting work.
 
+2026-09-18 batching follow-up: [BATCH-RESULTS.md](BATCH-RESULTS.md). Fixed 512
+real vectors, single-writer batch 32/128/512: 26.77/9.89/5.73 seconds;
+four-writer batch 128: 27.31 seconds, six conflicts. All four exactly reconciled.
+The original-only full bounded GPU pilot is being run separately; no result yet.
+
 Latest continuation: [PATCHED-RESULTS.md](PATCHED-RESULTS.md). Original-only
 VideoItem publication/range/decode passes on two real clips. Patched same-Ref
 1/2 writers pass; 4 writers STOP on bounded CAS retry exhaustion, all 384
