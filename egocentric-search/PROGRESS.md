@@ -2,6 +2,11 @@
 
 Issue: dreamlake-ai/dreamdb-core#400. Semantic search only; no lexical index.
 
+Latest optimization: [LEAF-WRITE-RESULTS.md](LEAF-WRITE-RESULTS.md). Candidate
+bc77082 overlaps eight independent fragment writes. Alternating two-real-clip
+S3 runs all passed byte/frame/range checks; mean publication 4.349 → 1.130 s
+(3.85x observed). This reduces latency, not request count; no merge/release yet.
+
 Current measured summary: [RESULTS.md](RESULTS.md). Bounded cloud jobs are
 complete; this is not closure of the full-scale/request-accounting work.
 
