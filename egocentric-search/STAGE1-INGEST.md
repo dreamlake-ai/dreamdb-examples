@@ -64,7 +64,7 @@ each attempt conservatively consumes its full 2h allowance (at most six), even
 if it fails early. No automatic resubmission. Temporary STS expiry reported
 `2026-09-18T06:28:07+00:00`; process exit does not revoke that session.
 
-Status at this record: first **17/1,000** clips have confirmed media + local
+Status at this record: first **145/1,000** clips have confirmed media + local
 vectors; GPU job running, vector layer not yet published, **not PASS**.
 Source-prepared clips are not media-committed clips, and media-committed clips
 are not published embeddings. `MEDIA_ENCODED` records media + local vectors;
@@ -84,3 +84,45 @@ Preflight job finished; exact scratch `/tmp/ego100k-stage1-test.nPdQTVCt` on
 node-121 removed by Slurm 148021 (`CLEANED`, no S3 deletion). Active stage1
 archives, vector/checkpoint state, GPU scratch, and unpublished local source
 worktrees must remain until completion/reconciliation; no shared caches touched.
+
+## Live performance observation (job still running)
+
+At job elapsed 8m55s: 145 media+local-vector units complete, no ingest failure
+observed. Earlier log snapshot ending at clip 107 gives these rolling windows
+(log timestamps have one-second resolution):
+
+| Completed-clip window | Seconds per clip | Clips per minute |
+|---|---:|---:|
+| 20 | 3.421 | 17.538 |
+| 50 | 3.449 | 17.396 |
+| 100 | 3.455 | 17.368 |
+
+This excludes the earlier HF acquisition and does not include still-pending IVF
+calibration/vector publication/readback. It is not full-corpus throughput or a
+completion ETA. No early throughput decay is evident in these windows.
+
+Read-only sampling used short `srun --jobid=148022 --overlap` steps within the
+existing allocation, not a second ingest or competing GPU workload:
+
+- Twenty 1s GPU readings at 23:34:50–23:35:09 (node clock) report 0% utilization,
+  2,298 MiB device memory and roughly 87–110 W. This does not prove no CUDA work;
+  the configured model and input tensors explicitly use CUDA. Short-burst vs
+  device counter behavior is unresolved, and no instrumentation experiment was
+  added to disambiguate it while the main task runs.
+- Twenty 1s checkpoint samples: 8 media-publication pending, 7 metadata-append
+  pending, 5 between commits; confirmed media increased 126→131. Occupancy
+  sampling, NOT exact phase-duration attribution or measured HTTP request count.
+- Main Python process: VmRSS 1,604,324 KiB (~1.53 GiB), VmHWM 1,710,868 KiB
+  (~1.63 GiB), 32 threads. Excludes ffmpeg/other children and is not job-wide RSS.
+- `sstat` returned unusable CPU/empty RSS values, so they are not reported as
+  utilization. The log's two initial “Failed” matches are pip hardlink-fallback
+  warnings, not failed ingest units.
+
+Interpretation: the source loop serializes media publication, decode/encode and
+metadata publication; sampled commit occupancy suggests pipeline overlap and
+publication batching deserve priority over simply adding GPUs. It does not
+prove S3 throttling, a GPU fault, or the exact savings of a prospective change.
+Do not restart this job or rerun completed clips for a comparison. Its existing
+`timings` dictionary records actual aggregate remux/media/decode/encode/metadata
+times in the final result. Reassess with those measurements and later rolling
+windows before authorizing stage 2. Optional packing remains off.
