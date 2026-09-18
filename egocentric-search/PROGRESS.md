@@ -2,6 +2,17 @@
 
 Issue: dreamlake-ai/dreamdb-core#400. Semantic search only; no lexical index.
 
+## Main task: full-corpus ingest (2026-09-18)
+
+User confirmed the **full Egocentric-100K corpus** as the goal, with cost and
+phased budgets required BEFORE starting scale-up. See
+[FULL-INGEST-BUDGET.md](FULL-INGEST-BUDGET.md). Authenticated metadata inventory:
+29,966 TARs / 25,408,748,072,960 declared bytes, pinned revision; no video
+download this turn. 58 original-only pilot clips remain the completed data
+baseline, not a full-ingest checkpoint. No scale-up job has been submitted.
+Performance experiments below are supporting work, not the primary completion
+metric. Await stage-1 budget approval; do not rerun the old 58-clip pilot.
+
 Latest optimization: [PACK-WRITE-RESULTS.md](PACK-WRITE-RESULTS.md). Opt-in
 fragment packing plus selected adjacent-range coalescing: actual media payload
 objects 44 → 2, same bytes; paired two-clip S3 means publication 1.137 → 0.991 s,
