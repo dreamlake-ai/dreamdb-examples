@@ -297,3 +297,54 @@ call counters are 768 (including the previously noted media receipt skip).
 These attempt-only figures exclude earlier attempts; they are neither the total
 ingest cost nor an HTTP request census. Published vector offset remained zero
 at this boundary. The running job's pinned SDK was not upgraded by release #407.
+
+## Stage 1 accepted (observed 2026-09-20)
+
+Job 148126 finished its application acceptance on 2026-09-18; the durable
+`work/result.json` says PASS and the log ends with `STAGE1_PASS 1000 179774`.
+The job is no longer in Slurm's active queue. This is an application result,
+not a recovered Slurm accounting/exit-code report (accounting is unavailable).
+
+- Ref: `ego100k-ingest-v1` in the existing private benchmark bucket.
+- Final tip: `dzwazfxlkudoyi2qclo56cvcxu75keblma42tfur65lvrglz5huku`.
+- A fresh 33-byte S3 Ref GET on 2026-09-20 matches that exact final tip.
+- 1,000 media receipts and 1,000 local vector shards; 179,774 vectors committed;
+  no pending publication. No preview or lexical index.
+- Acceptance reopened the published Dataset, compared every clip-key/anchor
+  against the 1,000 admitted inputs, read three interior media ranges, and ran
+  four semantic queries returning ten known vector anchors each. This is not
+  a vector census, a recall benchmark, or full playback of all videos.
+- IVF calibration: 423 centroids from 179,774 vectors; 324.584 s.
+- Vector publication: 11 chunks, 666.970 s total, about 269.5 vectors/s.
+- Five base checkpoint applications appear in the successful attempt's log.
+  Do not call this a production indexed-checkpoint exercise: no such transition
+  is established by these completion results; that API's prior local integration
+  qualification is separate.
+
+Final attempt timing to the last vector commit is 4,057.077 s (67.6 min),
+excluding subsequent acceptance and all earlier attempts. Media/metadata/decode/
+encoder/remux timings remain those recorded above. Metadata append (1,058.939 s),
+media publication (885.989 s), and decode/sample (841.016 s) dominate encoder
+time (71.244 s). This does not identify HTTP request counts or prove network
+bandwidth saturation. The 6/12 GPU-hour reservation ledger remains a conservative
+admission measure, not six GPU-hours actually consumed. Complete stage request/
+retry counts and billed cost were not instrumented and cannot be reconstructed
+from application call counters.
+
+Cleanup via CPU-only Slurm steps, after confirming no live ingest jobs/processes:
+removed `/tmp/ego100k-stage1-gpu.Dkz09ORI` on node-121 (1,003 MiB) and
+`/tmp/ego100k-stage1-gpu.aaI9nBRd` on node-099 (999 MiB). These contained
+reconstructible runtime/model scratch, not the durable result or source corpus.
+Retained under `/home/tom/ddb-ego100k-400/stage1`: verified source TARs (~12 GiB),
+vector shards (531 MiB), catalogue, calibration, checkpoint, receipts and result
+for continuation/reproduction. Qualified source/wheel and active ingest/example
+worktrees also remain needed. No S3 objects, archive Refs or history were deleted.
+
+Stage 2 has NOT started. Its existing proposed 10,000-clip / at-most-four-GPU /
+100 GPU-hour / 256 GiB transfer envelope remains a separate approval boundary.
+Before launch, replace stage-1's all-vectors-in-memory approach with bounded
+producer queues and controlled publication, retain exact source identities and
+checkpoint recovery, and add actual request/retry/byte counters. Publication
+concurrency must not silently become multiple unsynchronized writers to one Ref.
+This stage establishes correctness of the 1,000-clip path, not full-corpus
+throughput or high-concurrency scaling.
