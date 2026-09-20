@@ -1,0 +1,127 @@
+# Egocentric-100K semantic-search and concurrent-write benchmark
+
+**Experimental; bounded real-data measurements, not full-scale qualification.** Tracks
+[core #400](https://github.com/dreamlake-ai/dreamdb-core/issues/400).
+
+This application turns permitted real video into frame embeddings, then measures
+DreamDB reads and writes. It is not a new benchmark framework or
+a production ingestion service. Domain sampling, frame timestamps, encoding and
+queries belong to the application; object storage, snapshots, indexes and Ref
+publication belong to DreamDB.
+
+## Current status
+
+Stage 1 passed: 1,000 clips and 179,774 vectors in one searchable Ref. Media are
+stored as original H.265 stream-copy video items, and those stage-1 media and
+vectors are retained. The current pipeline produces **no previews or lexical
+index**. The earlier pilot used previews.
+
+The GPU adapter/pipeline lives in `dreamlake-ai/dreamlake-ingest`,
+`spaces/ego100k/`, and is now on `master`: the pilot commit `0391ebf` is an
+ancestor of `18933a3`, which merged as PR 28. Model/tokenizer and runtime pins
+live in the adapter. This example owns the workload, comparisons and results,
+not a second ingest engine.
+
+The qualified SDK is a **private** 0.0.15 wheel built from core `c93ca1a`. It
+shares a version string with the registry 0.0.15 artifact but is not the same
+build: it carries the private leaf patch, so a published wheel is not a
+substitute.
+
+Start here:
+
+- [STAGE1-INGEST.md](STAGE1-INGEST.md) — the stage-1 ingest that produced the
+  numbers above, and the current media/vector shape.
+- [STAGE2-PLAN.md](STAGE2-PLAN.md) — the bounded stage-2 envelope and its
+  admission limits.
+- [STAGE2-DEPLOYMENT.md](STAGE2-DEPLOYMENT.md) — merged core/adapter source and
+  the SDK artifact qualified from it.
+
+The SDK and the bridge are deployed. Stage-2 **ingestion** is not ready: the
+epoch driver, source admission and telemetry delta wiring are still pending. No
+data job has been started, and core #400 is still open.
+
+## Historical: the original 58-clip preview pilot
+
+Everything below records the first pilot and is kept for history. It is **not**
+the recipe for the next ingest: it used previews, raw-copy media, released
+dreamdb 0.0.14 and pre-merge task branches, all superseded by the current status
+above. Do not infer current object retention from these historical instructions;
+consult run-specific cleanup records.
+
+The pilot began from source metadata selection:
+
+```sh
+uv run --with huggingface_hub python egocentric-search/select_inputs.py \
+  --output /path/to/task/pilot-inputs.json
+```
+
+Requires your own HF login with access to builddotai/Egocentric-100K. The command
+pins the source revision, selects known-size shards across factories/workers,
+and downloads **no video**. It refuses to overwrite an existing output. Keep
+the output for the run; never put credentials in it. No GPU or DreamDB package
+is needed for this metadata-only command. Runtime dependency versions are
+recorded in its output; it does not establish SDK compatibility.
+
+[SPEC.md](SPEC.md) and [PLAN.md](PLAN.md) describe that pilot's contract and
+plan, including the preview work that the current pipeline no longer does. Do
+not copy another dataset's legacy ingest commands. The SDK tested for the pilot
+was released dreamdb 0.0.14.
+
+See [RESULTS.md](RESULTS.md) for its measured results and
+[PROGRESS.md](PROGRESS.md) for remaining scope and cleanup. That first real
+run stores 58 clips and 10,440 vectors, not the full 100K-hour corpus. Its source
+and preview bytes were read back and checked; semantic query probes pass.
+
+The commands and pins in the rest of this page are the pilot's own, recorded as
+run at the time.
+
+`write_stress.py` runs one explicit concurrency level using actual precomputed
+vectors. It needs Python 3.12, dreamdb 0.0.14, NumPy, S3 credentials scoped to an
+isolated bucket, the pilot's vector shard/calibration file, and the existing
+`dump_exact_subset` binary compiled from core `python-v0.0.14` for exact readback:
+
+```sh
+export DDB_EXACT_READER=/path/to/pinned/dump_exact_subset
+python egocentric-search/write_stress.py \
+  --vectors /path/to/pilot/vecs/0000/0.npz \
+  --calibration /path/to/pilot/calibration.json \
+  --backend "$BENCH_BACKEND" --mode independent --writers 1 \
+  --rows 512 --batch 32 --out /path/to/results/independent-1.json
+```
+
+The script refuses other remote buckets than the task bucket in PLAN.md. To
+adapt it, explicitly replace that isolation guard; do not point at production.
+Success requires fresh-read anchor/digest agreement and exact vector bytes,
+not just append return values. Ordinary Python scans of compressed fields
+return lossy reconstructions, even when rerank is enabled; they are NOT an
+exact-vector export interface. The script uses the existing exact-sidecar CLI,
+not a hand-rolled protocol parser. No lexical index is involved.
+
+`resolve_hit.py --queries <semantic-queries.json> --backend "$BENCH_BACKEND"
+--out <new.json>` links a real frame hit to its clip using this application's
+one-hour anchor stride. It verifies original and preview digests. This is an
+explicit application mapping, not implicit temporal hydration by DreamDB.
+
+`read_stress.py --pilot <pilot-run-directory> --out <new.json>` measures a
+bounded 320-query retrieval-only staircase on four actual image embeddings;
+the earlier text prompts remain the separate text-to-video functional check.
+`media_stress.py` accepts the same arguments and writes the first 16 real clip
+pairs to isolated independent Refs at each concurrency level. See SPEC.md for
+fixed budgets, projections, content checks and exclusions. These scripts are
+Slurm workloads, not controller/laptop stress commands.
+
+Each case creates fresh Refs and retains them for diagnosis. Unknown publish
+outcomes stop; only explicit conflicts have bounded reopen/retry. Request counts
+are not measured yet; phase timings must not be relabelled as wire throughput.
+Use Slurm for compute and the dedicated private S3 bucket recorded in PLAN.md.
+For that pilot, S3 held both original MP4 bytes and derivative previews, plus
+embeddings and necessary metadata; that describes the run as configured, not
+objects still present today. Preserve original-video bytes and their source identity for
+later experiments; do not mislabel a remux/transcode as the original. Source TAR
+archives need not be uploaded. Clean temporary node copies only after durable
+upload is confirmed; do not delete retained S3 originals as scratch cleanup.
+
+Task-local outputs, environments and node scratch must be removed after needed
+results are recorded. S3 cleanup is an explicit run-specific operation, never a
+recursive deletion against another dataset or a production bucket. No automatic
+expiration is configured; report retained data and costs rather than forgetting it.
