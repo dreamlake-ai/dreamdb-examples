@@ -304,6 +304,7 @@ wheel built from that merged source is installed and qualified, so a deployed
 release is available for the next job. What is **not** done is the stage-2 epoch
 driver, source admission, and the telemetry before/after delta wiring. No
 stage-2 **data** job has been admitted or submitted; the only remote jobs run so
-far are the CPU build and the runtime preflight recorded in
+far are the CPU build, the runtime preflight and the build-directory cleanup
+recorded in
 [STAGE2-DEPLOYMENT.md](STAGE2-DEPLOYMENT.md). Existing source and budget
 bindings are unchanged by this update and the exact budgets stand.

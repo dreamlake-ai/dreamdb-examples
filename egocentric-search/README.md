@@ -12,8 +12,9 @@ publication belong to DreamDB.
 ## Current status
 
 Stage 1 passed: 1,000 clips and 179,774 vectors in one searchable Ref. Media are
-stored as original H.265 stream-copy video items. The current pipeline produces
-**no previews and no lexical index**; both belonged to the earlier pilot.
+stored as original H.265 stream-copy video items, and those stage-1 media and
+vectors are retained. The current pipeline produces **no previews or lexical
+index**. The earlier pilot used previews.
 
 The GPU adapter/pipeline lives in `dreamlake-ai/dreamlake-ingest`,
 `spaces/ego100k/`, and is now on `master`: the pilot commit `0391ebf` is an
@@ -35,17 +36,17 @@ Start here:
 - [STAGE2-DEPLOYMENT.md](STAGE2-DEPLOYMENT.md) — merged core/adapter source and
   the SDK artifact qualified from it.
 
-Stage 2 is not deployed. No stage-2 data job has been admitted or submitted, the
-stage-2 epoch driver, source admission and telemetry delta wiring are not done,
-and core #400 is still open.
+The SDK and the bridge are deployed. Stage-2 **ingestion** is not ready: the
+epoch driver, source admission and telemetry delta wiring are still pending. No
+data job has been started, and core #400 is still open.
 
 ## Historical: the original 58-clip preview pilot
 
 Everything below records the first pilot and is kept for history. It is **not**
 the recipe for the next ingest: it used previews, raw-copy media, released
 dreamdb 0.0.14 and pre-merge task branches, all superseded by the current status
-above. Do not assume the pilot's stored objects still exist; they were deleted
-earlier, and current records describe only source objects as retained.
+above. Do not infer current object retention from these historical instructions;
+consult run-specific cleanup records.
 
 The pilot began from source metadata selection:
 

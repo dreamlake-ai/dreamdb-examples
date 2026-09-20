@@ -84,9 +84,17 @@ Local cleanup is done: the core HTTP worktree was removed with
 PR's own work. The handoff and bench worktrees are retained because stage 2
 still needs them.
 
-Remote build cleanup is **in progress** and is not claimed complete here; its
-final job ID will be recorded once that job's log reports done. Retained data is
-tracked with the rest of the run in [PROGRESS.md](PROGRESS.md).
+Remote build cleanup is done, independently verified by the lead: CPU job Slurm
+148493 COMPLETED, exit 0:0, runtime 5s, no GPU. It removed exactly the new
+`core-c93…/target` (1,987,857,353 B) and `core-c93…/build-env` (86,513,675 B).
+The exact reader, 22,805,304 B, was preserved by copying it to
+`bin/dump_exact_subset` with an unchanged SHA256
+`546a4cc8713b90034287960ec33e36737fd4e70e53f1290b181b457d55165543`. So roughly
+2 GB of build directories were removed; that is **not** the exact disk space
+freed, because the reader was copied out rather than deleted. The qualified
+`release/sdk`, its repo and `qualification.json`, the sources, the wheel and the
+reader are kept. The old SDK and all stage-1 artifacts are unchanged. Retained
+data is tracked with the rest of the run in [PROGRESS.md](PROGRESS.md).
 
 ## Corrected process error
 
