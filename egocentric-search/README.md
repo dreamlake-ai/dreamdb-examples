@@ -3,14 +3,51 @@
 **Experimental; bounded real-data measurements, not full-scale qualification.** Tracks
 [core #400](https://github.com/dreamlake-ai/dreamdb-core/issues/400).
 
-This application turns permitted real video into frame embeddings and previews,
-then measures DreamDB reads and writes. It is not a new benchmark framework or
+This application turns permitted real video into frame embeddings, then measures
+DreamDB reads and writes. It is not a new benchmark framework or
 a production ingestion service. Domain sampling, frame timestamps, encoding and
 queries belong to the application; object storage, snapshots, indexes and Ref
 publication belong to DreamDB.
 
-Read [SPEC.md](SPEC.md) and [PLAN.md](PLAN.md) before running anything.
-Start with source metadata selection:
+## Current status
+
+Stage 1 passed: 1,000 clips and 179,774 vectors in one searchable Ref. Media are
+stored as original H.265 stream-copy video items. The current pipeline produces
+**no previews and no lexical index**; both belonged to the earlier pilot.
+
+The GPU adapter/pipeline lives in `dreamlake-ai/dreamlake-ingest`,
+`spaces/ego100k/`, and is now on `master`: the pilot commit `0391ebf` is an
+ancestor of `18933a3`, which merged as PR 28. Model/tokenizer and runtime pins
+live in the adapter. This example owns the workload, comparisons and results,
+not a second ingest engine.
+
+The qualified SDK is a **private** 0.0.15 wheel built from core `c93ca1a`. It
+shares a version string with the registry 0.0.15 artifact but is not the same
+build: it carries the private leaf patch, so a published wheel is not a
+substitute.
+
+Start here:
+
+- [STAGE1-INGEST.md](STAGE1-INGEST.md) — the stage-1 ingest that produced the
+  numbers above, and the current media/vector shape.
+- [STAGE2-PLAN.md](STAGE2-PLAN.md) — the bounded stage-2 envelope and its
+  admission limits.
+- [STAGE2-DEPLOYMENT.md](STAGE2-DEPLOYMENT.md) — merged core/adapter source and
+  the SDK artifact qualified from it.
+
+Stage 2 is not deployed. No stage-2 data job has been admitted or submitted, the
+stage-2 epoch driver, source admission and telemetry delta wiring are not done,
+and core #400 is still open.
+
+## Historical: the original 58-clip preview pilot
+
+Everything below records the first pilot and is kept for history. It is **not**
+the recipe for the next ingest: it used previews, raw-copy media, released
+dreamdb 0.0.14 and pre-merge task branches, all superseded by the current status
+above. Do not assume the pilot's stored objects still exist; they were deleted
+earlier, and current records describe only source objects as retained.
+
+The pilot began from source metadata selection:
 
 ```sh
 uv run --with huggingface_hub python egocentric-search/select_inputs.py \
@@ -24,21 +61,18 @@ the output for the run; never put credentials in it. No GPU or DreamDB package
 is needed for this metadata-only command. Runtime dependency versions are
 recorded in its output; it does not establish SDK compatibility.
 
-The GPU adapter/pipeline lives in `dreamlake-ai/dreamlake-ingest`,
-`spaces/ego100k/` (task branch `feat/ego100k-pilot`, not yet merged). Do not copy
-another dataset's legacy ingest commands. Tested SDK is released dreamdb 0.0.14;
-model/tokenizer and runtime pins are in the adapter. This example owns the
-workload, comparisons and results, not a second ingest engine.
+[SPEC.md](SPEC.md) and [PLAN.md](PLAN.md) describe that pilot's contract and
+plan, including the preview work that the current pipeline no longer does. Do
+not copy another dataset's legacy ingest commands. The SDK tested for the pilot
+was released dreamdb 0.0.14.
 
-See [RESULTS.md](RESULTS.md) for measured results and [PROGRESS.md](PROGRESS.md)
-for remaining scope and cleanup. The first real
+See [RESULTS.md](RESULTS.md) for its measured results and
+[PROGRESS.md](PROGRESS.md) for remaining scope and cleanup. That first real
 run stores 58 clips and 10,440 vectors, not the full 100K-hour corpus. Its source
 and preview bytes were read back and checked; semantic query probes pass.
 
-[STAGE2-PLAN.md](STAGE2-PLAN.md) holds the bounded stage-2 envelope, and
-[STAGE2-DEPLOYMENT.md](STAGE2-DEPLOYMENT.md) records the merged core/adapter
-source and the SDK artifact qualified from it. Stage 2 is not deployed: no
-stage-2 data job has been admitted or submitted, and core #400 is still open.
+The commands and pins in the rest of this page are the pilot's own, recorded as
+run at the time.
 
 `write_stress.py` runs one explicit concurrency level using actual precomputed
 vectors. It needs Python 3.12, dreamdb 0.0.14, NumPy, S3 credentials scoped to an
@@ -79,8 +113,9 @@ Each case creates fresh Refs and retains them for diagnosis. Unknown publish
 outcomes stop; only explicit conflicts have bounded reopen/retry. Request counts
 are not measured yet; phase timings must not be relabelled as wire throughput.
 Use Slurm for compute and the dedicated private S3 bucket recorded in PLAN.md.
-S3 retains both original MP4 bytes and derivative previews, plus embeddings and
-necessary metadata. Preserve original-video bytes and their source identity for
+For that pilot, S3 held both original MP4 bytes and derivative previews, plus
+embeddings and necessary metadata; that describes the run as configured, not
+objects still present today. Preserve original-video bytes and their source identity for
 later experiments; do not mislabel a remux/transcode as the original. Source TAR
 archives need not be uploaded. Clean temporary node copies only after durable
 upload is confirmed; do not delete retained S3 originals as scratch cleanup.

@@ -299,6 +299,11 @@ Still required before the next data launch:
 - Finish the remaining bounded stage-2 work: the epoch driver, source
   admission, and deployment.
 
-The pipeline bridge remains under local review only; it is not qualified and not
-deployed. Existing source and budget bindings are unchanged by this update: the
-exact budgets stand and no remote job has been submitted.
+The pipeline bridge is no longer under local review only: it is merged, and the
+wheel built from that merged source is installed and qualified, so a deployed
+release is available for the next job. What is **not** done is the stage-2 epoch
+driver, source admission, and the telemetry before/after delta wiring. No
+stage-2 **data** job has been admitted or submitted; the only remote jobs run so
+far are the CPU build and the runtime preflight recorded in
+[STAGE2-DEPLOYMENT.md](STAGE2-DEPLOYMENT.md). Existing source and budget
+bindings are unchanged by this update and the exact budgets stand.

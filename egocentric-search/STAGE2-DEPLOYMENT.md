@@ -15,9 +15,10 @@ commit's tree is `6d54e258ab99a281c05fbe49535b3f9cfa0718f9`, identical to
 `c93ca1a`'s tree, so the merge introduced no content of its own. The branch
 carried the HTTP connector request telemetry and the interleaved ingest
 provenance check described in STAGE2-PLAN.md. The private leaf patch from base
-`cd71b1a` is now merged. All 14 required checks passed, including `cargo test`
-14m4s, WASM release artifacts 10m34s, python bindings 5m27s and the aarch64
-wheel 6m34s; Main integrity run 35489563728 passed on the merge commit.
+`cd71b1a` is now merged. All 14 checks reported on the PR passed, including
+`cargo test` 14m4s, WASM release artifacts 10m34s, python bindings 5m27s and the
+aarch64 wheel 6m34s; Main integrity run 35489563728 passed on the merge commit.
+Which of those checks are formally *required* is not established here.
 
 The registry 0.0.15 artifact is **unchanged**: nothing was published to PyPI or
 npm as part of this merge.
@@ -43,13 +44,24 @@ in 1.53 s, importing from
 Adapter source under that release directory is at `18933a3`. The exact artifact
 record is the run's `qualification.json`.
 
+The preflight ran on node 099 with pytest 9.1.1, NumPy 2.2.6 and Python 3.12.3.
+The script does not pin pytest, so those are observed versions for this run, not
+a promise about future runs.
+
 Resource note: 8 and 4 CPUs were requested, but actual `AllocTRES` was 32 CPUs
 for both jobs; no GPU was allocated. Neither job downloaded S3 data, source
 media or models — package build dependencies only.
 
+## Deployment selection
+
+`/home/tom/ddb-ego100k-400/releases/next-ingest` is a symlink, confirmed by the
+lead to resolve to `c93ca1a-18933a3`. That selects the SDK artifact and adapter
+source for the next job. It starts nothing: no job has been submitted.
+
 ## State deliberately unchanged
 
-No ingest ran, no Ref was written, and the shared venv was not modified. The
+No ingest ran, no **corpus** Ref was written, and the shared venv was not
+modified. The preflight's own local fixtures did write, as those tests require. The
 old root/repo, the stage-1 journal, and the stage-1 source/media/vector
 artifacts are unchanged. Stage-1 historical pins are retained intentionally;
 earlier reports on the sibling pages describe their own runs and stand as
@@ -67,9 +79,14 @@ admission, and the wiring of connector telemetry into before/after quiescent
 deltas all remain future work. No throughput, cost or recall claim follows from
 this page.
 
-Remote intermediates from the build and preflight jobs are **not** yet cleaned
-up; cleanup remains pending and is tracked with the rest of the run's retained
-data in [PROGRESS.md](PROGRESS.md).
+Local cleanup is done: the core HTTP worktree was removed with
+`git worktree remove` (no `--force`), along with three scratch files from this
+PR's own work. The handoff and bench worktrees are retained because stage 2
+still needs them.
+
+Remote build cleanup is **in progress** and is not claimed complete here; its
+final job ID will be recorded once that job's log reports done. Retained data is
+tracked with the rest of the run in [PROGRESS.md](PROGRESS.md).
 
 ## Corrected process error
 
