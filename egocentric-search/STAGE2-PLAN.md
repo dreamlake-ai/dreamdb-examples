@@ -90,6 +90,11 @@ child processes are released through a FIFO read on a raw file descriptor of
 exactly one byte, because a buffered read would drain the other children's
 release bytes.
 
+These results stand as recorded. The slice-scoped statements below, including
+the "not implemented by this slice" paragraph, describe that slice's own
+boundary at the time it was written; they are not contradicted by the later
+sections on this page, which record further local work.
+
 Purpose and limitations:
 
 - The reservation is a *trusted peak* declaration, not a filesystem quota.
@@ -117,6 +122,77 @@ Not implemented by this slice: producer/publisher wiring into the stage-2
 pipeline, bounded vector publication epochs, and stage-2
 admission/scheduler/HTTP telemetry. This slice launches nothing, uploads
 nothing and makes no throughput claim.
+
+## Implemented third slice: finite epoch producer/publisher bridge
+
+Commit `804d02c76b394b80a9f47b64201e8c794e34e8ec` on `feat/400-bounded-handoff`
+wires the bounded handoff to a publisher across a finite epoch. It adds a
+durable per-epoch input receipt, exact settlement of the final tip, and a
+journal in which the candidate is persisted before live state is mutated, so a
+failed save poisons the writer rather than leaving an unrecorded publication.
+
+Direct checks, independently re-run by the lead: 249 passed / 1 skipped for the
+unit suite, plus 4 real-file integration tests passed. Still absent: the stage-2
+epoch driver, source admission, Slurm and NFS operation, and HTTP deployment.
+
+Trust gap recorded for the operator: `prepare_original` may fail *after* writing
+its over-reservation but *before* the unit is ready. The caller must stop and
+reconcile; the spool does not measure transient usage and enforces no hard
+quota. Ready scratch is retained until publisher cleanup.
+
+## Core provenance: incremental video/embedding check
+
+*Historical slice record.* The provenance check was first written as
+`69b7c2a` on `fix/400-incremental-provenance` over base `cd71b1a` (earlier
+revisions of this page abbreviated that base as `cd71`, which was a typo). It
+adds a direct interleaved check: media first, then matching anchor vectors,
+then indexed checkpoints, then a CopyPlan over the current closure only, then
+GC, then reopen with media, exact vectors, query and original origin all
+re-verified.
+
+That standalone branch has since been superseded by the combined core branch
+recorded below, which carries the same work as cherry-pick `f702ee7`. The
+figures in this section describe the standalone run at the time it was made and
+are kept for history.
+
+The lead independently re-ran it in the local test box image
+`ddb-testbox:1.97.0-7d7c440db3b8` with
+`cargo test --offline --locked -p dreamdb-dataset --test indexed_ingest_checkpoint`:
+2 passed. No format or runtime change was made; spec 0002 was corrected to state
+ancestry rather than immediate parent. This is a local run, not formal Evidence
+and not CI.
+
+Scope limits: batch input truth remains the application receipt, there is no
+rebinding to a latest parent, and source-field replacement or drop is not
+covered by this check.
+
+## Combined core branch for both capability gates
+
+Both core-side gates now sit on one combined branch in
+`/Users/locatino/fortyfive/ddb-400-http-observability`, verified at HEAD
+`88dc9a1aee3daf2fa74e8e62910a52124031370e`:
+
+- `9103301` — HTTP connector request statistics exposed to Python.
+- `f702ee7` — cherry-pick of `69b7c2afa918105ff18eb857d415eb619ad7a09c`,
+  the interleaved provenance check above.
+- `88dc9a1` — docs.
+
+The base is `cd71b1a47ffff63ba0505d360d863ec003b07093`, which retains the
+private leaf patch. Any artifact built for the next launch must come from this
+combined source; an older or published wheel would lose that leaf patch.
+
+Direct checks on the combined branch, ordinary local testbox-image preflight
+only:
+
+- `indexed_ingest_checkpoint`: 2 passed, and `fmt` clean.
+- HTTP package: existing tests plus 7 new direct tests passed.
+- Python native build and check passed.
+- A fresh native Python copy: HTTP 2 passed; API parity 136 passed, 1 skipped.
+
+This is **not** formal Evidence, not CI, and not published-wheel verification.
+No new demonstrated core provenance bug came out of this work; the application
+recovery fixes and durable epoch receipts are done. No ingest or remote writes
+were performed.
 
 ## Remaining before data launch
 
@@ -148,22 +224,71 @@ Existing decisions are unchanged: extend the same Ref with its stored index;
 256 GiB is incremental **source** transfer, not a combined download/upload cap.
 New vectors need bounded publication epochs with independent digests/offsets:
 do not append new shards to stage 1's stream and reinterpret its terminal short
-batch offset. The epoch driver, source admission, multi-node coordination and
-HTTP telemetry remain separate unfinished integration work.
+batch offset. The stage-2 epoch driver, source admission, multi-node
+coordination and HTTP deployment remain separate unfinished integration work.
 
-The vector reader implements none of the following, and the handoff slice above
-is a standalone module that is not yet wired into the pipeline: the byte- and
-item-bounded queue now exists and is directly tested in isolation, but
-producer/publisher separation over it, stage-2 admission/credential submission
-and real request telemetry remain unimplemented as pipeline integration.
-Python currently exposes semantic-cache stats but no complete HTTP attempt/
-retry/byte counters. Python method-call counters cannot fill that gap; instrument
-the real connector send/retry boundary and expose bounded aggregate statistics,
-without recording credentials, signed URLs or request headers. Do not enable
-bucket logging services or infer billing from application calls.
+Superseded on both counts as of this update, and kept here for continuity: the
+handoff is no longer a standalone unwired module — `804d02c` bridges producer
+and publisher across a finite epoch — and Python is no longer limited to
+semantic-cache stats, since `9103301` instruments the real connector
+send/retry boundary and exposes bounded aggregates. What remains unimplemented
+as pipeline integration is the stage-2 epoch driver over that bridge, stage-2
+admission/credential submission, and hooking the telemetry into an eventual
+driver. The standing constraints are unchanged: expose only bounded aggregates,
+never credentials, signed URLs or request headers; do not enable bucket logging
+services or infer billing from application calls.
 
 Reuse the existing public-boundary checks for controlled publication/reopen and
 uncertain-commit recovery; do not introduce a second validation framework.
 After remaining implementation and qualification, start inside this approved
 envelope without asking again for the same budget. Stop for a genuinely new
 data/semantic loss, incompatible SDK, or an exceeded resource envelope.
+
+### Hard pre-ingest gates (2026-09-20)
+
+The owner directed that both capability gates below be finished *before* the
+next ingest. They are hard gates: no stage-2 data job is admitted or submitted
+until both are complete and reviewed. "Not parallel work" means these gates must
+not overlap with new remote ingest activity; it does not prohibit local
+implementation work proceeding in parallel.
+
+1. **(done: implementation, review and focused local verification)** **Real
+   connector request telemetry exposed to Python.** The actual connector
+   send/retry boundary is instrumented at `9103301`, so Python can read HTTP
+   attempt counts, internal retries, request and response body byte totals,
+   error classes and elapsed time. Only bounded aggregates are exposed; never
+   credentials, signed URLs or request headers. These are *not* billable wire
+   request/byte counts and *not* estimates derived from Dataset-level calls, and
+   must not be presented as either; no credential material is recorded.
+   Implementation, lead review and focused local verification are complete on
+   the combined branch. Wiring these counters into an eventual stage-2 driver,
+   around before/after quiescent deltas, is still outstanding.
+2. **(done: implementation, review and focused local verification for core
+   scope)** **Incremental video/embedding provenance check.**
+   For indexed checkpoints, verify provenance through exact-sidecar reads across
+   GC and reopen. No blind rebinding to the latest video is permitted. Per-epoch
+   true input provenance belongs in durable application receipts, not in this
+   check. Source review
+   supports the version-ancestry contract, and the behavioral interleaved check
+   above passes locally on the combined branch. The gate is done for its core
+   scope; no full-general correctness verdict is claimed.
+
+Both gates are therefore satisfied to the standard of implementation, lead
+review and focused local verification on one combined core branch. That
+standard is an ordinary local testbox-image preflight — not formal Evidence,
+not CI, and not published-wheel verification. Issue #400 is **not** complete and
+the stage-2 driver is **not** complete.
+
+Still required before the next data launch:
+
+- Build and install a qualified SDK artifact from the combined source above.
+  An old or published wheel is not acceptable: it loses the private leaf patch
+  carried by base `cd71b1a`.
+- Hook the connector telemetry into the eventual stage-2 driver, taking
+  before/after deltas while the system is quiescent.
+- Finish the remaining bounded stage-2 work: the epoch driver, source
+  admission, and deployment.
+
+The pipeline bridge remains under local review only; it is not qualified and not
+deployed. Existing source and budget bindings are unchanged by this update: the
+exact budgets stand and no remote job has been submitted.
