@@ -330,6 +330,9 @@ bandwidth saturation. The 6/12 GPU-hour reservation ledger remains a conservativ
 admission measure, not six GPU-hours actually consumed. Complete stage request/
 retry counts and billed cost were not instrumented and cannot be reconstructed
 from application call counters.
+An optional current whole-task-bucket LIST aggregation was stopped before
+completion; it produced no accepted occupancy total and is not a stage-1
+stored-byte measurement. It did not read payload objects or mutate storage.
 
 Cleanup via CPU-only Slurm steps, after confirming no live ingest jobs/processes:
 removed `/tmp/ego100k-stage1-gpu.Dkz09ORI` on node-121 (1,003 MiB) and
