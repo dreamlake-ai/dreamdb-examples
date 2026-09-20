@@ -279,11 +279,21 @@ standard is an ordinary local testbox-image preflight — not formal Evidence,
 not CI, and not published-wheel verification. Issue #400 is **not** complete and
 the stage-2 driver is **not** complete.
 
+**Update:** both gates have since been merged and a qualified SDK artifact has
+been built and preflighted from that merged source. CI did run on the core
+branch, so the "not CI" qualifier above applies to the earlier local checks
+rather than to the merged result. See
+[STAGE2-DEPLOYMENT.md](STAGE2-DEPLOYMENT.md) for merge SHAs, tree identities,
+the wheel digest and the job records. Issue #400 is still not complete.
+
 Still required before the next data launch:
 
-- Build and install a qualified SDK artifact from the combined source above.
-  An old or published wheel is not acceptable: it loses the private leaf patch
-  carried by base `cd71b1a`.
+- ~~Build and install a qualified SDK artifact from the combined source above.~~
+  Done: wheel 0.0.15 built from merged core `c93ca1a` and preflighted, recorded
+  in STAGE2-DEPLOYMENT.md. An old or published wheel remains unacceptable: it
+  loses the private leaf patch carried by base `cd71b1a`.
+- Adopt the journal from `cd71b1a` at a clean boundary before the first future
+  ingest. Not done; the journal has not been advanced.
 - Hook the connector telemetry into the eventual stage-2 driver, taking
   before/after deltas while the system is quiescent.
 - Finish the remaining bounded stage-2 work: the epoch driver, source

@@ -35,6 +35,11 @@ for remaining scope and cleanup. The first real
 run stores 58 clips and 10,440 vectors, not the full 100K-hour corpus. Its source
 and preview bytes were read back and checked; semantic query probes pass.
 
+[STAGE2-PLAN.md](STAGE2-PLAN.md) holds the bounded stage-2 envelope, and
+[STAGE2-DEPLOYMENT.md](STAGE2-DEPLOYMENT.md) records the merged core/adapter
+source and the SDK artifact qualified from it. Stage 2 is not deployed: no
+stage-2 data job has been admitted or submitted, and core #400 is still open.
+
 `write_stress.py` runs one explicit concurrency level using actual precomputed
 vectors. It needs Python 3.12, dreamdb 0.0.14, NumPy, S3 credentials scoped to an
 isolated bucket, the pilot's vector shard/calibration file, and the existing
