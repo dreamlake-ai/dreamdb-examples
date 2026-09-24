@@ -104,6 +104,76 @@ def test_closed_mode_does_not_require_arrival_rate_flag():
     assert "arrival-rate" not in (result.stderr + result.stdout)
 
 
+def test_open_loop_error_samples_are_bounded_and_capture_type_and_message():
+    # The product claim: infra query failures retain a bounded, inspectable
+    # sample (type/message/index) instead of only incrementing a counter —
+    # bounded per worker so a pathological run can't blow up the report.
+    def failing_query(index):
+        raise ValueError(f"boom {index}")
+
+    result = rs._open_loop_schedule(
+        vectors=[None] * 10, expected=[[0]] * 10, count=10,
+        start=0, rate_qps=1000.0, timeout_s=5.0, max_in_flight=10,
+        worker_index=0, num_workers=1, run_query=failing_query)
+
+    assert result["errors"] == 10
+    assert len(result["error_samples"]) == rs.MAX_ERROR_SAMPLES_PER_WORKER
+    for s in result["error_samples"]:
+        assert s["type"] == "ValueError"
+        assert s["message"].startswith("boom")
+        assert "query_index" in s
+
+
+def test_production_mode_requires_ref_tip_and_text_vector_source_together():
+    result = subprocess.run(
+        [sys.executable, str(HERE / "read_stress.py"),
+         "--out", "/tmp/does-not-matter-3.json",
+         "--ref", rs.PRODUCTION_REF],
+        capture_output=True, text=True)
+    assert result.returncode != 0
+    assert "production mode requires" in (result.stderr + result.stdout)
+
+
+def test_production_mode_rejects_a_ref_other_than_the_authorized_one():
+    result = subprocess.run(
+        [sys.executable, str(HERE / "read_stress.py"),
+         "--out", "/tmp/does-not-matter-4.json",
+         "--ref", "some-other-ref", "--tip", "deadbeef",
+         "--vector-source", "text"],
+        capture_output=True, text=True)
+    assert result.returncode != 0
+    assert "--ref must be" in (result.stderr + result.stdout)
+
+
+def test_missing_pilot_and_no_production_flags_fails_fast():
+    result = subprocess.run(
+        [sys.executable, str(HERE / "read_stress.py"),
+         "--out", "/tmp/does-not-matter-5.json"],
+        capture_output=True, text=True)
+    assert result.returncode != 0
+    assert "--pilot is required" in (result.stderr + result.stdout)
+
+
+def test_queries_per_level_hard_cap_is_enforced():
+    result = subprocess.run(
+        [sys.executable, str(HERE / "read_stress.py"),
+         "--pilot", "/nonexistent", "--out", "/tmp/does-not-matter-6.json",
+         "--queries-per-level", "1000"],
+        capture_output=True, text=True)
+    assert result.returncode != 0
+    assert "queries-per-level" in (result.stderr + result.stdout)
+
+
+def test_levels_must_be_strictly_increasing_and_within_the_concurrency_cap():
+    result = subprocess.run(
+        [sys.executable, str(HERE / "read_stress.py"),
+         "--pilot", "/nonexistent", "--out", "/tmp/does-not-matter-7.json",
+         "--levels", "8,4"],
+        capture_output=True, text=True)
+    assert result.returncode != 0
+    assert "--levels" in (result.stderr + result.stdout)
+
+
 def _run_all():
     tests = [v for k, v in globals().items() if k.startswith("test_")]
     failed = 0

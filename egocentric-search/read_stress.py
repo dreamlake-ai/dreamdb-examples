@@ -25,6 +25,26 @@ import numpy as np
 
 ENDPOINT = "https://dreamdb-ego100k-bench-747143892217-20260917.s3.us-east-1.amazonaws.com"
 
+# The one Ref this runner is authorized to open in production mode (issue
+# #400's bounded query experiment against the real ego100k-ingest-v1 tip).
+# --ref is still an explicit flag, not a hardcoded default, but it must equal
+# this value — production mode is one specific authorized experiment, not a
+# generic "open whatever Ref you like against the real backend" switch.
+PRODUCTION_REF = "ego100k-ingest-v1"
+
+# Same ceilings the original 147824 pilot contract already used (SPEC.md's
+# "Bounded follow-through after the first pilot": 64 queries/level, 1/2/4/8/16
+# readers, 320 timed queries maximum). Making queries-per-level and the
+# concurrency staircase configurable (for an 8-query calibration run before a
+# formal one) does not relax these — both pilot and production-mode runs stay
+# under the same hard caps.
+MAX_QUERIES_PER_LEVEL = 64
+MAX_LEVELS = 5
+MAX_CONCURRENCY = 16
+MAX_TOTAL_TIMED_QUERIES = 320
+MAX_BASELINE_VECTORS = 64
+MAX_ERROR_SAMPLES_PER_WORKER = 5
+
 # Matches spaces/ego100k/embedding-original.json, the spec the real corpus was
 # ingested with. Confirmed by source inspection: SiglipEmbedder's text and
 # image towers are both instantiated from this same "hard" dict, so a text
@@ -161,14 +181,16 @@ def encode_text_prompts(prompts, spec=None):
 
 def _run_query(ds, vector, expected, timeout_s):
     """One query attempt. Returns (elapsed_s, ok, error) — error is an infra
-    failure (caught), not a correctness mismatch (stays fatal to the caller,
-    since a wrong answer against a pinned snapshot is a potential Core bug,
-    not a load-test error to count and move past)."""
+    failure (caught, and returned as a bounded {"type", "message"} sample so
+    the caller can retain it), not a correctness mismatch (stays fatal to the
+    caller, since a wrong answer against a pinned snapshot is a potential
+    Core bug, not a load-test error to count and move past)."""
     t = time.perf_counter()
     try:
         anchors = query(ds, vector)
     except Exception as exc:                                    # noqa: BLE001
-        return time.perf_counter() - t, False, str(exc)[:300]
+        err = {"type": type(exc).__name__, "message": str(exc)[:300]}
+        return time.perf_counter() - t, False, err
     elapsed = time.perf_counter() - t
     if anchors != expected:
         raise RuntimeError("query anchors/order differ from serial baseline")
@@ -184,19 +206,22 @@ def worker_closed(ref, tip, vectors, expected, count, start, barrier, timeout_s)
     begin = time.perf_counter()
     cpu = time.process_time()
     latencies, errors, timeouts = [], 0, 0
+    error_samples = []
     for i in range(count):
         index = (start + i) % len(vectors)
         elapsed, ok, err = _run_query(ds, vectors[index], expected[index], timeout_s)
         latencies.append(elapsed)
         if err is not None:
             errors += 1
+            if len(error_samples) < MAX_ERROR_SAMPLES_PER_WORKER:
+                error_samples.append({"query_index": index, **err})
         elif not ok:
             timeouts += 1
     end = time.perf_counter()
     after = ds.http_stats()
     return {"latency_s": latencies, "start": begin, "end": end,
             "offered": count, "completed": len(latencies) - errors,
-            "errors": errors, "timeouts": timeouts,
+            "errors": errors, "timeouts": timeouts, "error_samples": error_samples,
             "cpu_s": time.process_time() - cpu,
             "max_rss_kib_linux": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
             "http_stats_delta": http_stats_delta(before, after)}
@@ -260,6 +285,7 @@ def _open_loop_schedule(vectors, expected, count, start, rate_qps, timeout_s,
     sem = threading.Semaphore(max_in_flight)
     lock = threading.Lock()
     latencies, errors, timeouts = [], 0, 0
+    error_samples = []
     fatal = []
 
     def run_one(index, scheduled):
@@ -269,6 +295,10 @@ def _open_loop_schedule(vectors, expected, count, start, rate_qps, timeout_s,
         except Exception as exc:                                # noqa: BLE001
             with lock:
                 errors += 1
+                if len(error_samples) < MAX_ERROR_SAMPLES_PER_WORKER:
+                    error_samples.append({"query_index": index,
+                                           "type": type(exc).__name__,
+                                           "message": str(exc)[:300]})
             sem.release()
             return
         finished = time.perf_counter()
@@ -313,6 +343,7 @@ def _open_loop_schedule(vectors, expected, count, start, rate_qps, timeout_s,
     return {"latency_s": latencies, "start": begin, "end": time.perf_counter(),
             "offered": offered, "admitted": admitted, "dropped": dropped,
             "completed": len(latencies), "errors": errors, "timeouts": timeouts,
+            "error_samples": error_samples,
             "first_offer_t": offer_times[0] if offer_times else begin,
             "last_offer_t": offer_times[-1] if offer_times else begin}
 
@@ -338,8 +369,34 @@ def worker_open(ref, tip, vectors, expected, count, start, barrier,
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--pilot", type=Path, required=True)
+    ap.add_argument("--pilot", type=Path, default=None,
+                     help="dir with semantic-queries.json (ref/manifest/PASS). "
+                          "Required unless --ref/--tip production mode is used; "
+                          "ignored (not read at all — its PASS is not inherited) "
+                          "when production mode is engaged.")
     ap.add_argument("--out", type=Path, required=True)
+    ap.add_argument("--ref", type=str, default=None,
+                     help="explicit dataset Ref — engages the authorized "
+                          f"bounded production-scope experiment. Must equal "
+                          f"{PRODUCTION_REF!r} and be combined with --tip and "
+                          "--vector-source text; this is one specific "
+                          "authorized experiment (issue #400), not a general "
+                          "switch to any Ref/production traffic.")
+    ap.add_argument("--tip", type=str, default=None,
+                     help="expected exact current_manifest() for --ref; "
+                          "checked after opening, not inherited from any "
+                          "pilot's semantic-queries.json PASS status.")
+    ap.add_argument("--queries-per-level", type=int, default=64,
+                     help=f"timed queries per concurrency level, 1..{MAX_QUERIES_PER_LEVEL} "
+                          "(hard-capped, same ceiling as the original pilot "
+                          "contract). Use a small value (e.g. 8) for a "
+                          "calibration run before a formal one.")
+    ap.add_argument("--levels", type=str, default="1,2,4,8,16",
+                     help=f"comma-separated, strictly increasing reader counts, "
+                          f"<={MAX_LEVELS} levels, each <={MAX_CONCURRENCY} "
+                          "readers (hard-capped, same ceiling as the original "
+                          "pilot contract). E.g. '1' for a single-level "
+                          "calibration run.")
     ap.add_argument("--vector-source", choices=("image", "text"), default="image",
                      help="image: repeated real pilot image vectors (original "
                           "behavior). text: diverse real text-query vectors, "
@@ -377,10 +434,39 @@ def main():
         raise SystemExit("--arrival-rate must be > 0")
     if a.max_in_flight <= 0:
         raise SystemExit("--max-in-flight must be > 0")
+    if not (1 <= a.queries_per_level <= MAX_QUERIES_PER_LEVEL):
+        raise SystemExit(f"--queries-per-level must be 1..{MAX_QUERIES_PER_LEVEL}")
+    try:
+        levels = tuple(int(x) for x in a.levels.split(","))
+    except ValueError:
+        raise SystemExit("--levels must be a comma-separated list of ints")
+    if not levels or list(levels) != sorted(set(levels)) or any(n <= 0 for n in levels):
+        raise SystemExit("--levels must be strictly increasing positive ints")
+    if len(levels) > MAX_LEVELS:
+        raise SystemExit(f"--levels must have at most {MAX_LEVELS} levels")
+    if max(levels) > MAX_CONCURRENCY:
+        raise SystemExit(f"--levels entries must be <={MAX_CONCURRENCY}")
+    if a.queries_per_level * len(levels) > MAX_TOTAL_TIMED_QUERIES:
+        raise SystemExit("--queries-per-level x number of --levels exceeds "
+                          f"the {MAX_TOTAL_TIMED_QUERIES}-query hard cap")
 
-    prior = json.loads((a.pilot / "semantic-queries.json").read_text())
-    if prior.get("status") != "PASS":
-        raise SystemExit("successful semantic pilot required")
+    production = a.ref is not None or a.tip is not None
+    if production:
+        if not (a.ref and a.tip and a.vector_source == "text"):
+            raise SystemExit("production mode requires --ref, --tip and "
+                              "--vector-source text all together")
+        if a.ref != PRODUCTION_REF:
+            raise SystemExit(f"--ref must be {PRODUCTION_REF!r} — this is one "
+                              "specific authorized production-scope "
+                              "experiment, not a general Ref switch")
+    elif a.pilot is None:
+        raise SystemExit("--pilot is required unless --ref/--tip production "
+                          "mode is used")
+
+    if not production:
+        prior = json.loads((a.pilot / "semantic-queries.json").read_text())
+        if prior.get("status") != "PASS":
+            raise SystemExit("successful semantic pilot required")
 
     if a.vector_source == "text":
         prompts = (json.loads(a.text_prompts.read_text()) if a.text_prompts
@@ -405,18 +491,34 @@ def main():
             f"vector dim {vectors.shape[1:] if vectors.ndim >= 2 else vectors.shape} "
             f"!= expected {expected_dim}; a mismatch here would surface as an "
             "opaque failure partway through a real run, not at startup")
+    if len(vectors) > MAX_BASELINE_VECTORS:
+        raise SystemExit(f"{len(vectors)} query vectors exceeds the "
+                          f"{MAX_BASELINE_VECTORS}-vector hard cap on the "
+                          "serial baseline (each is a real backend query)")
 
-    ds = db.Dataset.open(prior["ref"], backend=ENDPOINT)
-    if ds.current_manifest() != prior["manifest"]:
-        raise RuntimeError("pilot snapshot changed")
+    if production:
+        ds = db.Dataset.open(a.ref, backend=ENDPOINT)
+        actual_tip = ds.current_manifest()
+        if actual_tip != a.tip:
+            raise RuntimeError(
+                f"--tip mismatch: expected {a.tip!r}, dataset "
+                f"current_manifest() is {actual_tip!r} — refusing to run "
+                "against a manifest that wasn't explicitly verified")
+        ref, manifest = a.ref, actual_tip
+    else:
+        ds = db.Dataset.open(prior["ref"], backend=ENDPOINT)
+        if ds.current_manifest() != prior["manifest"]:
+            raise RuntimeError("pilot snapshot changed")
+        ref, manifest = prior["ref"], prior["manifest"]
     expected = [query(ds, v) for v in vectors]
     if any(len(x) != 10 for x in expected):
         raise RuntimeError("serial query incomplete")
 
-    report = {"ref": prior["ref"], "manifest": prior["manifest"],
+    report = {"ref": ref, "manifest": manifest, "production_mode": production,
               "vector_source": a.vector_source, "query_vector_rows": vector_rows,
               "top_k": 10, "nprobe": 32, "projection": [],
-              "queries_per_level": 64, "mode": a.mode,
+              "queries_per_level": a.queries_per_level,
+              "concurrency_levels": list(levels), "mode": a.mode,
               "arrival_rate_qps": a.arrival_rate, "timeout_s": a.timeout_s,
               "levels": [], "status": "RUNNING",
               "scope": "closed-loop: offered==completed except on an infra "
@@ -453,23 +555,36 @@ def main():
                        "connector sums (Dataset.open per worker, never "
                        "branch(), so no cross-worker double count); "
                        "http_per_completed_query divides only fields "
-                       "HTTP_STATS_KEYS actually counted."}
+                       "HTTP_STATS_KEYS actually counted. production_mode: "
+                       "when true, ref/manifest came from explicit --ref/"
+                       "--tip (verified via current_manifest() equality "
+                       "right before the run), NOT inherited from any "
+                       "pilot's semantic-queries.json PASS status. Every "
+                       "level's error_samples is a bounded, per-worker-"
+                       "capped list of {query_index, type, message} for "
+                       "infra query failures (not correctness mismatches, "
+                       "which stay fatal/raise immediately). After a "
+                       "level's results are written to --out, a nonzero "
+                       "error count for that level stops the run before "
+                       "the next concurrency level — deliberately with no "
+                       "'expected exception type' whitelist, so a possible "
+                       "Core failure is never silently continued past."}
     a.out.write_text(json.dumps(report, indent=2))
 
     ctx = mp.get_context("spawn")
-    for writers in (1, 2, 4, 8, 16):
+    for writers in levels:
         print(f"START readers={writers}", flush=True)
         begin = time.perf_counter()
         with ctx.Manager() as manager:
             barrier = manager.Barrier(writers)
             with ProcessPoolExecutor(writers, mp_context=ctx) as pool:
-                per_worker = 64 // writers
+                per_worker = a.queries_per_level // writers
                 if a.mode == "closed":
-                    jobs = [pool.submit(worker_closed, prior["ref"], prior["manifest"],
+                    jobs = [pool.submit(worker_closed, ref, manifest,
                             vectors, expected, per_worker, i * per_worker, barrier,
                             a.timeout_s) for i in range(writers)]
                 else:
-                    jobs = [pool.submit(worker_open, prior["ref"], prior["manifest"],
+                    jobs = [pool.submit(worker_open, ref, manifest,
                             vectors, expected, per_worker, i * per_worker, barrier,
                             a.arrival_rate, a.timeout_s, a.max_in_flight,
                             i, writers) for i in range(writers)]
@@ -478,11 +593,13 @@ def main():
         active = max(r["end"] for r in results) - min(r["start"] for r in results)
         latencies = [v for r in results for v in r["latency_s"]]
         level_http_stats = sum_http_stats([r["http_stats_delta"] for r in results])
+        level_errors = sum(r["errors"] for r in results)
         level = {"readers": writers,
             "offered": sum(r["offered"] for r in results),
             "completed": len(latencies),
-            "errors": sum(r["errors"] for r in results),
+            "errors": level_errors,
             "timeouts": sum(r["timeouts"] for r in results),
+            "error_samples": [s for r in results for s in r["error_samples"]],
             "wall_s_including_startup": wall, "query_window_s": active,
             "qps_query_window": len(latencies) / active if active > 0 else 0.0,
             "p50_p95_p99_ms": (np.percentile(latencies, [50, 95, 99]) * 1000).tolist()
@@ -503,6 +620,15 @@ def main():
         report["levels"].append(level)
         a.out.write_text(json.dumps(report, indent=2))
         print(json.dumps(level), flush=True)
+        if level_errors > 0:
+            report["status"] = "STOPPED_ON_ERROR"
+            a.out.write_text(json.dumps(report, indent=2))
+            raise SystemExit(
+                f"stopping before the next concurrency level: readers={writers} "
+                f"had {level_errors} error(s) (bounded samples in "
+                "this level's error_samples, see --out) — this is an "
+                "explicit stop-and-report policy, not a judgment that any "
+                "particular exception type is safe to continue past")
     report["status"] = "PASS"
     a.out.write_text(json.dumps(report, indent=2))
 
