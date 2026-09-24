@@ -449,6 +449,16 @@ def main():
     if a.queries_per_level * len(levels) > MAX_TOTAL_TIMED_QUERIES:
         raise SystemExit("--queries-per-level x number of --levels exceeds "
                           f"the {MAX_TOTAL_TIMED_QUERIES}-query hard cap")
+    bad_levels = [w for w in levels
+                  if a.queries_per_level < w or a.queries_per_level % w != 0]
+    if bad_levels:
+        raise SystemExit(
+            f"--queries-per-level ({a.queries_per_level}) must be >= each "
+            "--levels entry and evenly divisible by it, so every worker at "
+            f"every level gets an equal, nonzero share; violated by {bad_levels} "
+            "(e.g. 8 queries over 16 readers would give 0 queries/worker "
+            "and still report PASS; 64 over 3 would silently run fewer "
+            "queries than --queries-per-level claims)")
 
     production = a.ref is not None or a.tip is not None
     if production:

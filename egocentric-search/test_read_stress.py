@@ -164,6 +164,27 @@ def test_queries_per_level_hard_cap_is_enforced():
     assert "queries-per-level" in (result.stderr + result.stdout)
 
 
+def test_queries_per_level_must_evenly_cover_every_level():
+    # 8 queries over a 16-reader level would give 0 queries/worker and still
+    # report PASS; this must be rejected at argument-parsing time instead.
+    result = subprocess.run(
+        [sys.executable, str(HERE / "read_stress.py"),
+         "--pilot", "/nonexistent", "--out", "/tmp/does-not-matter-8.json",
+         "--queries-per-level", "8", "--levels", "16"],
+        capture_output=True, text=True)
+    assert result.returncode != 0
+    assert "evenly divisible" in (result.stderr + result.stdout)
+
+    # 64 queries over 3 readers doesn't divide evenly either.
+    result = subprocess.run(
+        [sys.executable, str(HERE / "read_stress.py"),
+         "--pilot", "/nonexistent", "--out", "/tmp/does-not-matter-9.json",
+         "--queries-per-level", "64", "--levels", "3"],
+        capture_output=True, text=True)
+    assert result.returncode != 0
+    assert "evenly divisible" in (result.stderr + result.stdout)
+
+
 def test_levels_must_be_strictly_increasing_and_within_the_concurrency_cap():
     result = subprocess.run(
         [sys.executable, str(HERE / "read_stress.py"),
