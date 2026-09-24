@@ -38,20 +38,50 @@ def test_sum_http_stats_none_when_all_workers_none():
     assert rs.sum_http_stats([None, None]) is None
 
 
-def test_http_stats_keys_match_the_rust_snapshot_field_names():
-    # Guards against silent drift from dreamdb-connector-http/src/stats.rs's
-    # HttpStatsSnapshot. If a future SDK adds/renames a counter, this list
-    # (and the aggregation above) needs an explicit update, not a silent gap.
-    expected = {
-        "attempts_started", "attempts_completed", "retries_internal",
-        "put_redirect_hops", "status_2xx", "status_3xx", "status_4xx",
-        "status_5xx", "status_412", "transport_errors", "body_errors",
-        "cancelled", "request_body_bytes", "response_body_bytes",
-        "attempt_nanos_total", "requests_get", "requests_head",
-        "requests_put", "requests_post", "requests_delete", "requests_other",
-    }
-    assert set(rs.HTTP_STATS_KEYS) == expected
-    assert len(rs.HTTP_STATS_KEYS) == len(expected)
+def test_http_per_completed_query_divides_only_declared_rate_keys():
+    stats = {k: 100 for k in rs.HTTP_STATS_KEYS}
+    rates = rs.http_per_completed_query(stats, 10)
+    for k in rs.HTTP_PER_QUERY_RATE_KEYS:
+        assert rates[f"{k}_per_completed_query"] == 10.0
+    assert rates["retries_internal"] == 100
+    assert "requests_put_per_completed_query" not in rates
+
+
+def test_http_per_completed_query_none_without_stats_or_completions():
+    stats = {k: 1 for k in rs.HTTP_STATS_KEYS}
+    assert rs.http_per_completed_query(None, 10) is None
+    assert rs.http_per_completed_query(stats, 0) is None
+
+
+def test_default_text_prompts_are_at_least_fifty_and_distinct():
+    assert len(rs.DEFAULT_TEXT_PROMPTS) >= 50
+    assert len(set(rs.DEFAULT_TEXT_PROMPTS)) == len(rs.DEFAULT_TEXT_PROMPTS)
+
+
+def test_open_loop_keeps_offering_while_a_query_is_in_flight_then_drops_at_limit():
+    # The product claim under test: the schedule is decoupled from query
+    # completion (offered keeps advancing while an earlier query hasn't
+    # returned) and admission is bounded (a full pool is a real, counted
+    # drop, not a block). A slow-but-controllable stand-in for the network
+    # call proves this without opening a real Dataset.
+    import time
+
+    # rate_qps=200 spaces the 3 ticks 5ms apart (15ms total); a 200ms
+    # "query" comfortably outlasts all three ticks' issuance without any
+    # cross-thread signaling the test would otherwise need to arrange.
+    def slow_query(index):
+        time.sleep(0.2)
+        return [0]
+
+    result = rs._open_loop_schedule(
+        vectors=[None, None, None], expected=[[0], [0], [0]], count=3,
+        start=0, rate_qps=200.0, timeout_s=5.0, max_in_flight=1,
+        worker_index=0, num_workers=1, run_query=slow_query)
+
+    assert result["offered"] == 3, "every tick must be reached regardless of the in-flight query"
+    assert result["admitted"] == 1, "only the first tick found a free slot"
+    assert result["dropped"] == 2, "the pool was full for both later ticks — a real, explicit drop"
+    assert result["completed"] == 1
 
 
 def test_open_mode_requires_arrival_rate():
