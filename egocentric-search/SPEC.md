@@ -108,6 +108,46 @@ storage backend, not HF. Private dataset permissions remain intact.
 The public SDK measurements do not supply HTTP request/traffic counters. Report
 that gap explicitly rather than infer them from calls or payload bytes.
 
+### Authorized bounded production-tip query experiment (issue #400)
+
+Separately from, and in addition to, the 147824-pilot-pinned `read_stress.py`
+bullet above (which stays exactly as written — same pinned snapshot, image
+vectors, default caps, unchanged), `read_stress.py` also accepts an explicit
+`--ref ego100k-ingest-v1 --tip <full manifest hash> --vector-source text`
+combination that opens the real `ego100k-ingest-v1` release tip instead of a
+pilot's `semantic-queries.json`. This is ONE specific, already-authorized,
+still-bounded read experiment against real production data — not a
+full-corpus switch-over, not a general "point this runner at any Ref"
+capability, and not authorization for any other script in this directory to
+do the same.
+
+- All three flags (`--ref`, `--tip`, `--vector-source text`) are required
+  together; `--ref` must literally equal `ego100k-ingest-v1`. Opening
+  verifies `current_manifest() == --tip` exactly before any query runs — the
+  old pilot's PASS status is never read or inherited in this mode.
+- Query count per level (`--queries-per-level`) and the concurrency staircase
+  (`--levels`) are configurable, but hard-capped at the same ceiling the
+  147824 pilot already used: <=64 queries/level, <=5 levels, each <=16
+  concurrent readers, <=320 timed queries total per invocation, and <=64
+  query vectors in the serial correctness baseline (each baseline query is
+  also a real backend call).
+- A small calibration invocation (e.g. `--queries-per-level 8 --levels 1`,
+  with a matching small `--text-prompts` file so the serial baseline is also
+  ~8 queries, not the full 60-prompt default) must be run and its output
+  reviewed before a formal invocation at the default 1/2/4/8/16 x 64 shape.
+- Every query exception is retained as a bounded per-worker sample (type,
+  message truncated to 300 chars, query index) in that level's report, not
+  only counted. If a level finishes with `errors > 0`, the run stops before
+  starting the next concurrency level and reports rather than continuing —
+  deliberately with no "expected/benign exception type" whitelist, so a
+  possible Core regression is never silently absorbed into a PASS. A result
+  anchor/order mismatch against the serial baseline remains an immediate
+  fatal raise, unchanged from the pilot-mode path.
+- Same job-limit philosophy as the pilot bullet: a calibration run is a
+  handful of minutes; a formal run stays within a twenty-minute job limit and
+  the 320-timed-query ceiling above. No write of any kind against
+  `ego100k-ingest-v1` is authorized by this clause.
+
 ## Limits
 
 Pilot: 1 GPU, 8 CPUs, 32 GiB RAM, 2 hours, <=8 GiB source shards, <=64 clips,
